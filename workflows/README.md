@@ -18,17 +18,31 @@ All N8N webhooks follow the pattern: `https://n8n.srv997159.hstgr.cloud/webhook/
 
 ## Deployment Process
 
-Workflows are deployed using the deployment script:
+### Local Deployment
+
+Workflows can be deployed locally using the deployment script:
 
 ```bash
 npm run deploy:workflows
 ```
 
 This script:
-1. Reads workflow JSON files from this directory
-2. Uses N8N API to upload/update workflows
-3. Validates successful deployment
-4. Logs webhook URLs for each deployed workflow
+1. Validates N8N_API_KEY and N8N_WEBHOOK_URL environment variables
+2. Reads workflow JSON files from this directory
+3. Validates JSON format for each workflow
+4. Uses N8N API to upload/update workflows (when implemented)
+5. Logs deployment summary
+
+### GitHub Actions Deployment
+
+Workflows can also be deployed via GitHub Actions with manual approval:
+
+1. Go to: https://github.com/gbramnik/sales-machine/actions/workflows/deploy-workflows.yaml
+2. Click "Run workflow"
+3. Select branch (usually `main`)
+4. Click "Run workflow" to confirm
+
+**Prerequisites**: Ensure `N8N_API_KEY` and `N8N_WEBHOOK_URL` secrets are set in GitHub repository settings.
 
 ## Adding New Workflows
 

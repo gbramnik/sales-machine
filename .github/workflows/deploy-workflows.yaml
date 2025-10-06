@@ -1,0 +1,29 @@
+name: Deploy N8N Workflows
+
+on:
+  workflow_dispatch:  # Manual approval gate
+
+jobs:
+  deploy-workflows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jq (JSON processor)
+        run: sudo apt-get install -y jq
+
+      - name: Deploy workflows to N8N Cloud
+        env:
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+        run: bash scripts/deploy-workflows.sh
+
+      - name: Deployment Summary
+        run: echo "✅ N8N workflows deployed successfully"

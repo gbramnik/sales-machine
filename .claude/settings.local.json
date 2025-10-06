@@ -3,7 +3,11 @@
     "allow": [
       "Bash(md-tree explode:*)",
       "Bash(npm run lint)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "Bash(export:*)",
+      "Bash(export N8N_WEBHOOK_URL=\"https://n8n.srv997159.hstgr.cloud\")",
+      "Bash(bash:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []
