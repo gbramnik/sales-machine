@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(md-tree explode:*)"
+      "Bash(md-tree explode:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run test:*)"
     ],
     "deny": [],
     "ask": []

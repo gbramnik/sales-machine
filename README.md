@@ -1,5 +1,7 @@
 # Sales Machine
 
+[![CI](https://github.com/gbramnik/sales-machine/actions/workflows/ci.yaml/badge.svg)](https://github.com/gbramnik/sales-machine/actions/workflows/ci.yaml)
+
 AI-powered B2B sales automation platform for enterprise deal flow management.
 
 ## Overview
