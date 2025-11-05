@@ -1,0 +1,497 @@
+{
+  "name": "Email Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "id": "cron-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT DISTINCT user_id FROM public.campaigns WHERE status = 'active'"
+      },
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "get-active-users"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/email-queue/dequeue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, limit: 20 }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Dequeue Emails",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300],
+      "id": "dequeue-emails"
+    },
+    {
+      "parameters": {
+        "mode": "splitInBatches",
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Emails",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [850, 300],
+      "id": "split-emails"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build URL for sending limit check\nconst apiUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';\nconst sendingEmail = $json.sending_email;\nconst checkUrl = `${apiUrl}/api/email-sending-limit/check?sending_email=${encodeURIComponent(sendingEmail)}`;\n\nreturn {\n  json: {\n    ...$json,\n    check_limit_url: checkUrl\n  }\n};"
+      },
+      "name": "Build Limit Check URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "build-limit-url"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.check_limit_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Check Sending Limit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "id": "check-sending-limit"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-limit-reached",
+              "leftValue": "={{ $json.is_reached }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Limit Reached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "id": "limit-reached-check"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/email/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  to: $json.prospect_email,\n  subject: $json.personalized_subject,\n  body: $json.personalized_body,\n  from: $json.sending_email,\n  user_id: $json.user_id,\n  prospect_id: $json.prospect_id,\n  template_id: $json.template_id,\n  campaign_id: $json.campaign_id\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Send Email via API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 200],
+      "id": "send-email"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "prospects",
+          "mode": "list"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ 'contacted' }}",
+            "contacted_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json.prospect_id }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Update Prospect Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1850, 200],
+      "id": "update-prospect-status"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": {
+          "__rl": true,
+          "value": "ai_conversation_log",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "user_id": "={{ $json.user_id }}",
+            "prospect_id": "={{ $json.prospect_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "direction": "={{ 'outbound' }}",
+            "channel": "={{ 'email' }}",
+            "message_type": "={{ 'initial_outreach' }}",
+            "message_text": "={{ $json.personalized_body }}",
+            "subject": "={{ $json.personalized_subject }}",
+            "email_message_id": "={{ $json('Send Email via API').message_id }}",
+            "sent_at": "={{ $now.toISO() }}",
+            "metadata": "={{ JSON.stringify({ template_id: $json.template_id, sent_at: $now.toISO() }) }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Email Send",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2050, 200],
+      "id": "log-email-send"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/email-sending-limit/increment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, sending_email: $json.sending_email }) }}",
+        "options": {}
+      },
+      "name": "Increment Sending Counter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2250, 200],
+      "id": "increment-counter"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/campaigns/check-deliverability",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ campaign_id: $json.campaign_id }) }}",
+        "options": {}
+      },
+      "name": "Check Deliverability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 400],
+      "id": "check-deliverability"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-pause",
+              "leftValue": "={{ $json.should_pause }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Should Pause?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1650, 400],
+      "id": "should-pause"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "campaigns",
+          "mode": "list"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ 'paused' }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json.campaign_id }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Pause Campaign",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1850, 300],
+      "id": "pause-campaign"
+    }
+  ],
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Users": {
+      "main": [
+        [
+          {
+            "node": "Dequeue Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dequeue Emails": {
+      "main": [
+        [
+          {
+            "node": "Split Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Emails": {
+      "main": [
+        [
+          {
+            "node": "Build Limit Check URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Limit Check URL": {
+      "main": [
+        [
+          {
+            "node": "Check Sending Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Sending Limit": {
+      "main": [
+        [
+          {
+            "node": "Limit Reached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit Reached?": {
+      "main": [
+        [
+          {
+            "node": "Send Email via API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Deliverability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email via API": {
+      "main": [
+        [
+          {
+            "node": "Update Prospect Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Prospect Status": {
+      "main": [
+        [
+          {
+            "node": "Log Email Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Email Send": {
+      "main": [
+        [
+          {
+            "node": "Increment Sending Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Deliverability": {
+      "main": [
+        [
+          {
+            "node": "Should Pause?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Pause?": {
+      "main": [
+        [
+          {
+            "node": "Pause Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-11T12:00:00.000Z",
+  "versionId": "1"
+}
+

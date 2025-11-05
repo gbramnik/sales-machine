@@ -1,0 +1,531 @@
+{
+  "name": "AI-Powered Contextual Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-enrichment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "ai-enrichment",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate required parameters\nconst body = $input.item.json.body || $input.item.json;\nconst required = ['prospect_id', 'user_id'];\nconst missing = required.filter(field => !body[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nreturn { json: body };"
+      },
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "validate-input"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build SQL query for prospect data\nconst data = $input.item.json;\nconst prospectId = data.prospect_id;\nconst userId = data.user_id;\n\n// Build SQL query with proper UUID casting\nconst query = `SELECT id, user_id, full_name, job_title, company_name, profile_summary, location, linkedin_url, email, email_confidence_score FROM public.prospects WHERE id = '${prospectId}'::uuid AND user_id = '${userId}'::uuid`;\n\nreturn {\n  json: {\n    ...data,\n    sql_query: query\n  }\n};"
+      },
+      "name": "Build Prospect Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550, 300],
+      "id": "build-prospect-query"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql_query }}"
+      },
+      "name": "Fetch Prospect Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "fetch-prospect"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT company_data FROM public.prospect_enrichment WHERE prospect_id = '{{ $json.prospect_id }}'::uuid LIMIT 1"
+      },
+      "name": "Fetch Company Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "fetch-company"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all data sources and determine enrichment_source\nconst prospect = $('Fetch Prospect Data').item.json;\nconst enrichmentRecord = $('Fetch Company Data').item.json || {};\nconst companyData = enrichmentRecord.company_data || {};\n\n// Extract company data from JSONB field\nconst company = {\n  company_linkedin_url: companyData.company_linkedin_url || '',\n  company_description: companyData.company_description || '',\n  industry: companyData.industry || '',\n  company_size: companyData.company_size || '',\n  headquarters: companyData.headquarters || '',\n  website_url: companyData.website_url || '',\n  website_description: companyData.website_description || '',\n  products_services: companyData.products_services || '',\n  recent_news: companyData.recent_news || '',\n  contact_info: companyData.contact_info || ''\n};\n\n// Determine enrichment_source based on available data\nlet enrichmentSource = 'linkedin_only';\nif (company.company_description || company.industry) {\n  enrichmentSource = 'linkedin_company';\n}\nif (enrichmentSource === 'linkedin_company' && (company.website_description || company.products_services)) {\n  enrichmentSource = 'linkedin_company_web';\n}\nif (enrichmentSource === 'linkedin_company_web' && prospect.email) {\n  enrichmentSource = 'full';\n}\n\n// Build Redis GET URL\nconst redisUrl = process.env.UPSTASH_REDIS_REST_URL || '';\nconst cacheKey = `enrichment:${prospect.id}`;\nconst redisGetUrl = `${redisUrl}/get/${cacheKey}`;\n\n// Build data structure for Claude API\nconst enrichmentData = {\n  prospect: {\n    full_name: prospect.full_name,\n    job_title: prospect.job_title,\n    company_name: prospect.company_name,\n    profile_summary: prospect.profile_summary || '',\n    location: prospect.location || '',\n    linkedin_url: prospect.linkedin_url || ''\n  },\n  company: {\n    linkedin_url: company.company_linkedin_url || '',\n    description: company.company_description || '',\n    industry: company.industry || '',\n    size: company.company_size || '',\n    headquarters: company.headquarters || '',\n    website: company.website_url || '',\n    website_description: company.website_description || '',\n    products_services: company.products_services || '',\n    recent_news: company.recent_news || ''\n  },\n  email_finder: {\n    email: prospect.email || null,\n    confidence_score: prospect.email_confidence_score || null\n  },\n  enrichment_source: enrichmentSource,\n  redis_get_url: redisGetUrl\n};\n\nreturn {\n  json: {\n    ...enrichmentData,\n    prospect_id: prospect.id,\n    user_id: prospect.user_id\n  }\n};"
+      },
+      "name": "Combine Data Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "combine-data"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.redis_get_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.UPSTASH_REDIS_REST_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Check Redis Cache",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "id": "check-cache"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cache-check",
+              "leftValue": "={{ $json.result }}",
+              "rightValue": "null",
+              "operator": {
+                "type": "string",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "id": "cache-check-node"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse cached enrichment data\nconst cachedData = JSON.parse($json.result);\nreturn { json: { ...cachedData, cached: true } };"
+      },
+      "name": "Parse Cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 200],
+      "id": "parse-cache"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Claude API prompt\nconst data = $input.item.json;\n\nconst systemPrompt = \"You are a B2B sales research assistant specializing in personalized LinkedIn outreach with deep company context. Generate structured, actionable insights for B2B sales professionals.\";\n\nconst userPrompt = `Based on this LinkedIn profile, company LinkedIn page, company website, and email finder data, generate 3-5 personalized talking points for B2B LinkedIn outreach focusing on pain points, recent company activities, mutual interests, and company-specific insights.\n\n**LinkedIn Profile:**\n- Name: ${data.prospect.full_name}\n- Job Title: ${data.prospect.job_title}\n- Company: ${data.prospect.company_name}\n- Location: ${data.prospect.location}\n- Profile Summary: ${data.prospect.profile_summary || 'N/A'}\n- LinkedIn URL: ${data.prospect.linkedin_url}\n\n**Company LinkedIn Page:**\n- Description: ${data.company.description || 'N/A'}\n- Industry: ${data.company.industry || 'N/A'}\n- Size: ${data.company.size || 'N/A'}\n- Headquarters: ${data.company.headquarters || 'N/A'}\n- Website: ${data.company.website || 'N/A'}\n\n**Company Website:**\n- Website Description: ${data.company.website_description || 'N/A'}\n- Products/Services: ${data.company.products_services || 'N/A'}\n- Recent News: ${data.company.recent_news || 'N/A'}\n\n**Email Finder Data:**\n- Email: ${data.email_finder.email || 'N/A'}\n- Confidence Score: ${data.email_finder.confidence_score || 'N/A'}\n\nReturn ONLY valid JSON in this exact format:\n{\n  \"talking_points\": [\"point 1\", \"point 2\", \"point 3\"],\n  \"pain_points\": [\"pain 1\", \"pain 2\"],\n  \"recent_activity\": \"string describing recent activity\",\n  \"company_insights\": \"string with company-level insights\",\n  \"tech_stack\": [\"tech 1\", \"tech 2\"],\n  \"personalization_score\": 85\n}`;\n\nreturn {\n  json: {\n    model: \"claude-sonnet-3-5-20241022\",\n    max_tokens: 2048,\n    messages: [\n      {\n        role: \"system\",\n        content: systemPrompt\n      },\n      {\n        role: \"user\",\n        content: userPrompt\n      }\n    ],\n    prospect_id: data.prospect_id,\n    user_id: data.user_id,\n    enrichment_source: data.enrichment_source\n  }\n};"
+      },
+      "name": "Build Claude Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 400],
+      "id": "build-prompt"
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.CLAUDE_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $json.model,\n  max_tokens: $json.max_tokens,\n  messages: $json.messages\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "name": "Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1850, 400],
+      "id": "call-claude",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude API response and extract enrichment data\nconst response = $input.item.json;\nconst inputData = $('Build Claude Prompt').item.json;\n\n// Extract content from Claude response\nlet content = '';\nif (response.content && Array.isArray(response.content)) {\n  content = response.content[0].text || '';\n} else if (typeof response.content === 'string') {\n  content = response.content;\n}\n\n// Parse JSON from Claude response (remove markdown code blocks if present)\nlet enrichmentData;\ntry {\n  const jsonMatch = content.match(/```json\\s*([\\s\\S]*?)\\s*```/) || content.match(/```\\s*([\\s\\S]*?)\\s*```/);\n  const jsonString = jsonMatch ? jsonMatch[1] : content;\n  enrichmentData = JSON.parse(jsonString.trim());\n} catch (error) {\n  throw new Error(`Failed to parse Claude response: ${error.message}. Content: ${content.substring(0, 200)}`);\n}\n\n// Extract token usage from headers\nconst requestTokens = parseInt(response.headers?.['anthropic-ratelimit-request-tokens'] || '0', 10);\nconst responseTokens = parseInt(response.headers?.['anthropic-ratelimit-response-tokens'] || '0', 10);\nconst tokenCount = requestTokens + responseTokens;\n\n// Determine enrichment_source\nconst enrichmentSource = inputData.enrichment_source || 'linkedin_only';\n\n// Build Redis SET URL\nconst redisUrl = process.env.UPSTASH_REDIS_REST_URL || '';\nconst cacheKey = `enrichment:${inputData.prospect_id}`;\nconst redisSetUrl = `${redisUrl}/set/${cacheKey}`;\n\nreturn {\n  json: {\n    ...enrichmentData,\n    prospect_id: inputData.prospect_id,\n    user_id: inputData.user_id,\n    enrichment_source: enrichmentSource,\n    claude_model_used: 'claude-sonnet-3-5-20241022',\n    token_count: tokenCount,\n    cached: false,\n    redis_set_url: redisSetUrl\n  }\n};"
+      },
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 400],
+      "id": "parse-response"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.redis_set_url }}",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.UPSTASH_REDIS_REST_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  value: JSON.stringify($json),\n  ex: 604800\n}) }}",
+        "options": {}
+      },
+      "name": "Store in Redis Cache",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2250, 400],
+      "id": "store-cache"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO public.prospect_enrichment (\n  prospect_id, user_id, talking_points, pain_points, recent_activity,\n  company_insights, tech_stack, personalization_score, enrichment_source,\n  claude_model_used, token_count, enriched_at\n) VALUES (\n  '{{ $json.prospect_id }}'::uuid,\n  '{{ $json.user_id }}'::uuid,\n  '{{ JSON.stringify($json.talking_points || []) }}'::jsonb,\n  '{{ JSON.stringify($json.pain_points || []) }}'::jsonb,\n  '{{ ($json.recent_activity || '').replace(/'/g, \"''\") }}',\n  '{{ ($json.company_insights || '').replace(/'/g, \"''\") }}',\n  '{{ JSON.stringify($json.tech_stack || []) }}'::jsonb,\n  {{ $json.personalization_score || 0 }},\n  '{{ $json.enrichment_source }}',\n  '{{ $json.claude_model_used }}',\n  {{ $json.token_count || 0 }},\n  NOW()\n)\nON CONFLICT (prospect_id) DO UPDATE SET\n  talking_points = EXCLUDED.talking_points,\n  pain_points = EXCLUDED.pain_points,\n  recent_activity = EXCLUDED.recent_activity,\n  company_insights = EXCLUDED.company_insights,\n  tech_stack = EXCLUDED.tech_stack,\n  personalization_score = EXCLUDED.personalization_score,\n  enrichment_source = EXCLUDED.enrichment_source,\n  claude_model_used = EXCLUDED.claude_model_used,\n  token_count = EXCLUDED.token_count,\n  enriched_at = NOW()\nRETURNING id"
+      },
+      "name": "Store in Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "store-supabase"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "low-score-check",
+              "leftValue": "={{ $json.personalization_score }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Low Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2650, 300],
+      "id": "low-confidence-check"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.prospects SET requires_approval = TRUE WHERE id = '{{ $json.prospect_id }}'::uuid;\nINSERT INTO public.ai_review_queue (\n  prospect_id, user_id, message_type, status, reason, created_at\n) VALUES (\n  '{{ $json.prospect_id }}'::uuid,\n  '{{ $json.user_id }}'::uuid,\n  'initial_outreach',\n  'pending',\n  'Enrichment score below threshold ({{ $json.personalization_score }})',\n  NOW()\n)\nON CONFLICT (prospect_id, message_type) DO UPDATE SET\n  status = 'pending',\n  reason = EXCLUDED.reason,\n  created_at = NOW()"
+      },
+      "name": "Flag for Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "flag-review"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE public.prospects SET status = 'enriched' WHERE id = '{{ $json.prospect_id }}'::uuid AND status = 'new'"
+      },
+      "name": "Update Prospect Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2650, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "update-status"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  execution_id: $execution.id,\n  prospect_id: $json.prospect_id,\n  enrichment_id: $('Store in Supabase').item.json.id || null,\n  cached: $json.cached || false,\n  personalization_score: $json.personalization_score || 0,\n  requires_approval: $json.personalization_score < 50\n}) }}"
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3050, 300],
+      "id": "respond-webhook"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Build Prospect Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prospect Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch Prospect Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Prospect Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch Company Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Company Data": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Check Redis Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Redis Cache": {
+      "main": [
+        [
+          {
+            "node": "Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Parse Cache",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Claude Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Cache": {
+      "main": [
+        [
+          {
+            "node": "Store in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Claude Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Store in Redis Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Redis Cache": {
+      "main": [
+        [
+          {
+            "node": "Store in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Low Confidence?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Confidence?": {
+      "main": [
+        [
+          {
+            "node": "Flag for Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Prospect Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag for Review": {
+      "main": [
+        [
+          {
+            "node": "Update Prospect Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Prospect Status": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+

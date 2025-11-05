@@ -2,9 +2,9 @@
 
 ## Technical Summary
 
-Sales Machine is a hybrid microservices architecture combining **N8N workflows as orchestration engine**, **custom Node.js API Gateway**, **React SPA frontend**, and **Supabase PostgreSQL** with **Upstash Redis** for caching and queuing. The system leverages **Claude API** for AI-powered prospect enrichment and conversational qualification, while **MCP (Model Context Protocol) servers** provide an abstraction layer for third-party integrations (scraping, enrichment, outreach). Deployment spans **Railway (API Gateway + Frontend)**, **N8N Cloud (workflows)**, **Supabase Cloud (database + auth)**, and **Upstash (Redis)**. This architecture enables autonomous prospecting at scale while maintaining solo-preneur operational simplicity through managed services and visual workflow debugging.
+**No Spray No Pray** is a hybrid microservices architecture combining **N8N workflows as orchestration engine**, **custom Node.js API Gateway**, **React SPA frontend**, and **Supabase PostgreSQL** with **Upstash Redis** for caching and queuing. The system leverages **Claude API** for AI-powered prospect enrichment and conversational qualification, **UniPil API** for LinkedIn automation (warm-up, connections, messages), and **SMTP dédié** (SendGrid/Mailgun/AWS SES) for email delivery. Deployment spans **Railway (API Gateway + Frontend)**, **N8N Cloud (workflows)**, **Supabase Cloud (database + auth)**, and **Upstash (Redis)**. This architecture enables ultra-qualified LinkedIn prospecting with intelligent warm-up strategy while maintaining solo-preneur operational simplicity through managed services and visual workflow debugging.
 
-The frontend provides a trust-oriented dashboard that hides technical complexity behind business-focused interfaces (Health Score, Meeting Pipeline, AI Review Queue). Backend workflows handle LinkedIn scraping → Claude enrichment → email queueing → AI response → meeting booking autonomously, with human-in-the-loop intervention for VIP accounts and low-confidence AI decisions. Architecture prioritizes deliverability protection (hard-coded 20 emails/day limit), GDPR compliance (Supabase RLS + audit logging), and cost efficiency (<€2K/month for 15 customers).
+The frontend provides a trust-oriented dashboard that hides technical complexity behind business-focused interfaces (Daily Prospects, Warm-up Status, LinkedIn Conversations, AI Review Queue). Backend workflows handle daily prospect detection (6h AM) → comprehensive enrichment (profile + company + web + email finder) → LinkedIn warm-up (7-15 days) → connection request → AI conversation (LinkedIn + Email) → meeting booking autonomously, with human-in-the-loop intervention for VIP accounts and low-confidence AI decisions. Architecture prioritizes deliverability protection (hard-coded 50-100 emails/day limit, LinkedIn warm-up limits 30-40 actions/day), GDPR compliance (Supabase RLS + audit logging), and cost efficiency (<€2K/month for 15 customers).
 
 ## Platform and Infrastructure Choice
 
@@ -13,10 +13,10 @@ The frontend provides a trust-oriented dashboard that hides technical complexity
 **Key Services:**
 - **Compute:** Railway (API Gateway + Frontend hosting), N8N Cloud (workflow execution)
 - **Database:** Supabase PostgreSQL 15+ (primary data store + Auth + Realtime)
-- **Caching/Queue:** Upstash Redis Serverless (session tokens, enrichment cache, email queue)
+- **Caching/Queue:** Upstash Redis Serverless (session tokens, enrichment cache, email queue, warm-up action tracking)
 - **AI:** Anthropic Claude API (Sonnet 3.5/4 for enrichment and conversation)
 - **CDN:** Railway built-in edge network + Supabase CDN for static assets
-- **Integrations:** PhantomBuster (LinkedIn scraping), Instantly.ai/Smartlead (email), Cal.com (calendar)
+- **Integrations:** UniPil (LinkedIn automation: warm-up, connections, messages), SMTP dédié (SendGrid/Mailgun/AWS SES for email), Email Finder API (Anymail/Better Contacts), Web Scraping (Puppeteer/Playwright), Cal.com (calendar)
 
 **Deployment Host and Regions:**
 - **Primary Region:** EU West (Frankfurt/Paris) for GDPR compliance and French user latency
@@ -86,9 +86,9 @@ sales-machine/
 │   ├── ai-conversation.json
 │   ├── meeting-booking.json
 │   └── README.md                 # Workflow deployment guide
-├── mcp-servers/                  # MCP abstraction layer (Phase 2 - Epic 4)
+├── mcp-servers/                  # MCP abstraction layer (Phase 2+ - Epic 4, deferred)
 │   ├── scraping/
-│   │   ├── phantombuster-adapter.ts
+│   │   ├── unipil-adapter.ts
 │   │   └── captaindata-adapter.ts
 │   ├── enrichment/
 │   │   ├── claude-adapter.ts
@@ -136,10 +136,12 @@ graph TB
     end
 
     subgraph "Orchestration Layer - N8N Cloud"
-        N8N_SCRAPE[LinkedIn Scraper<br/>Workflow]
-        N8N_ENRICH[AI Enrichment<br/>Workflow]
-        N8N_EMAIL[Email Scheduler<br/>Workflow]
-        N8N_AI[AI Conversation<br/>Workflow]
+        N8N_DAILY[Daily Prospect Detection<br/>6h AM Workflow]
+        N8N_ENRICH[Comprehensive Enrichment<br/>Profile + Company + Web + Email]
+        N8N_WARMUP[LinkedIn Warm-up<br/>7-15 Days Workflow]
+        N8N_CONNECT[LinkedIn Connection<br/>Workflow]
+        N8N_AI[AI Conversation<br/>LinkedIn + Email]
+        N8N_EMAIL[Email Scheduler<br/>SMTP Workflow]
         N8N_MEETING[Meeting Booking<br/>Workflow]
     end
 
@@ -158,9 +160,10 @@ graph TB
     end
 
     subgraph "External Integrations"
-        PHANTOM[PhantomBuster<br/>LinkedIn Scraping]
-        INSTANTLY[Instantly.ai<br/>Email Sending]
-        BUILTWITH[BuiltWith API<br/>Tech Stack Detection]
+        UNIPIL[UniPil API<br/>LinkedIn Automation]
+        SMTP[SMTP Dédié<br/>SendGrid/Mailgun/SES]
+        EMAIL_FINDER[Email Finder API<br/>Anymail/Better Contacts]
+        WEB_SCRAPE[Web Scraping<br/>Puppeteer/Playwright]
         CAL[Cal.com<br/>Meeting Booking]
     end
 
@@ -169,35 +172,58 @@ graph TB
     WEB -->|API Calls<br/>JWT Auth| API
 
     %% API Gateway Connections
-    API -->|Trigger Workflows| N8N_SCRAPE
+    API -->|Trigger Workflows| N8N_DAILY
     API -->|Query Data| SUPABASE_DB
     API -->|Validate JWT| SUPABASE_AUTH
     API -->|Get/Set Cache| REDIS
 
-    %% Workflow Orchestration
-    N8N_SCRAPE -->|Scrape Profiles| PHANTOM
-    N8N_SCRAPE -->|Store Prospects| SUPABASE_DB
-    N8N_SCRAPE -->|Trigger| N8N_ENRICH
+    %% Daily Workflow Orchestration
+    N8N_DAILY -->|Detect 20 Prospects| UNIPIL
+    N8N_DAILY -->|Store Prospects| SUPABASE_DB
+    N8N_DAILY -->|Trigger| N8N_ENRICH
 
+    %% Enrichment Workflow
+    N8N_ENRICH -->|Extract Profile + Company| UNIPIL
+    N8N_ENRICH -->|Scrape Website| WEB_SCRAPE
+    N8N_ENRICH -->|Find Email + Phone| EMAIL_FINDER
     N8N_ENRICH -->|Generate Talking Points| CLAUDE
     N8N_ENRICH -->|Cache Enrichment<br/>7-day TTL| REDIS
     N8N_ENRICH -->|Store Enrichment| SUPABASE_DB
-    N8N_ENRICH -->|Trigger| N8N_EMAIL
+    N8N_ENRICH -->|Trigger| N8N_WARMUP
 
-    N8N_EMAIL -->|Dequeue from Redis| REDIS
-    N8N_EMAIL -->|Send Email<br/>20/day limit| INSTANTLY
-    N8N_EMAIL -->|Update Status| SUPABASE_DB
+    %% Warm-up Workflow (7-15 days)
+    N8N_WARMUP -->|Likes/Comments Daily| UNIPIL
+    N8N_WARMUP -->|Detect Authors| UNIPIL
+    N8N_WARMUP -->|Track Actions| REDIS
+    N8N_WARMUP -->|Store Actions| SUPABASE_DB
+    N8N_WARMUP -->|After Delay| N8N_CONNECT
 
+    %% Connection Workflow
+    N8N_CONNECT -->|Send Connection Request| UNIPIL
+    N8N_CONNECT -->|Store Connection| SUPABASE_DB
+    N8N_CONNECT -->|Accepted?| N8N_AI
+    N8N_CONNECT -->|Rejected?| N8N_EMAIL
+
+    %% AI Conversation Workflow
+    N8N_AI -->|Conversation LinkedIn| UNIPIL
+    N8N_AI -->|Conversation Email| SMTP
     N8N_AI -->|Qualify Lead| CLAUDE
     N8N_AI -->|Low Confidence?| SUPABASE_DB
     N8N_AI -->|Qualified?| N8N_MEETING
 
+    %% Email Fallback Workflow
+    N8N_EMAIL -->|Dequeue from Redis| REDIS
+    N8N_EMAIL -->|Send Email<br/>50-100/day limit| SMTP
+    N8N_EMAIL -->|Update Status| SUPABASE_DB
+
+    %% Meeting Booking Workflow
     N8N_MEETING -->|Book Meeting| CAL
     N8N_MEETING -->|Store Meeting| SUPABASE_DB
     N8N_MEETING -->|Publish Event| SUPABASE_RT
 
     %% External Webhooks
-    INSTANTLY -.->|Reply Webhook| N8N_AI
+    UNIPIL -.->|Reply Webhook<br/>LinkedIn| N8N_AI
+    SMTP -.->|Reply Webhook<br/>Email| N8N_AI
     CAL -.->|Booking Webhook| N8N_MEETING
 
     %% Realtime Updates
@@ -210,8 +236,8 @@ graph TB
 
     class WEB,API primary
     class SUPABASE_DB,SUPABASE_AUTH,REDIS data
-    class PHANTOM,INSTANTLY,BUILTWITH,CAL,CLAUDE external
-    class N8N_SCRAPE,N8N_ENRICH,N8N_EMAIL,N8N_AI,N8N_MEETING orchestration
+    class UNIPIL,SMTP,EMAIL_FINDER,WEB_SCRAPE,CAL,CLAUDE external
+    class N8N_DAILY,N8N_ENRICH,N8N_WARMUP,N8N_CONNECT,N8N_AI,N8N_EMAIL,N8N_MEETING orchestration
 ```
 
 ## Architectural Patterns
@@ -220,7 +246,7 @@ graph TB
 
 - **API Gateway Pattern** - Lightweight Node.js layer centralizes authentication, rate limiting, and request validation before routing to N8N workflows or Supabase. _Rationale:_ Protects workflows from unauthenticated access, enforces business rules (e.g., prevent bypassing 20 email/day limit).
 
-- **MCP Abstraction Layer (Epic 4)** - Category-based servers (Scraping MCP, Enrichment MCP, Outreach MCP) wrap third-party integrations with standard interfaces, enabling tool swapping without workflow rewrites. _Rationale:_ Vendor lock-in mitigation (swap PhantomBuster for Captain Data via config change).
+- **MCP Abstraction Layer (Epic 4, Phase 2+)** - Category-based servers (Scraping MCP, Enrichment MCP, Outreach MCP) wrap third-party integrations with standard interfaces, enabling tool swapping without workflow rewrites. _Rationale:_ Vendor lock-in mitigation (swap UniPil for alternative providers via config change). _Note:_ Deferred to post-MVP phase per sprint change proposal.
 
 - **CQRS-Lite for AI Review Queue** - Separate read model (optimized query joins for review queue UI) from write model (normalized Supabase tables). _Rationale:_ Complex review queue queries (prospect + enrichment + message + context) benefit from materialized view vs. N+1 queries.
 
@@ -228,7 +254,7 @@ graph TB
 
 - **Cache-Aside Pattern (Redis)** - Application checks Redis before querying Supabase/Claude, populates cache on miss with TTL. _Rationale:_ Reduce Claude API costs (€0.01-0.05/conversation) by caching enrichment data for 7 days.
 
-- **Circuit Breaker for External APIs** - N8N workflows implement retry logic with exponential backoff; after 3 failures, mark service degraded and notify user. _Rationale:_ PhantomBuster/Instantly.ai outages shouldn't cascade to full system failure.
+- **Circuit Breaker for External APIs** - N8N workflows implement retry logic with exponential backoff; after 3 failures, mark service degraded and notify user. _Rationale:_ UniPil/SMTP provider outages shouldn't cascade to full system failure.
 
 - **Repository Pattern for Data Access** - API Gateway uses service layer (`ProspectService`, `CampaignService`) abstracting Supabase queries. _Rationale:_ Enables future database migration without rewriting routes; testable business logic.
 

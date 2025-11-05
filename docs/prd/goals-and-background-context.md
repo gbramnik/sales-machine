@@ -2,21 +2,29 @@
 
 ## Goals
 
-- Enable solo entrepreneurs and SMBs to achieve enterprise-scale prospecting capabilities (equivalent to a 10-person sales team) without human intervention
-- Generate 10-30 qualified meetings/month consistently for users through autonomous AI-powered multi-channel outreach
-- Validate Micro-MVP (LinkedIn + Email + Basic AI Agent) within 6 weeks with 5 beta users generating 3+ qualified meetings each
+- Enable solo entrepreneurs and SMBs to achieve enterprise-scale prospecting capabilities through ultra-qualified LinkedIn prospecting without spray-and-pray tactics
+- Generate 20 qualified prospects/day with warm-up LinkedIn strategy (7-15 days) leading to higher connection acceptance rates and meaningful conversations
+- Validate Micro-MVP (LinkedIn Warm-up + Connection + AI Conversation) within 7-8 weeks with 5 beta users generating consistent LinkedIn connections and conversations
 - Achieve €10K MRR within 6 months of launch with 50 paying customers at €200 average MRR
 - Maintain solo-preneur operational model through 100 customers, proving scalability without requiring team expansion
-- Position Sales Machine as "the all-bound AI prospecting platform" within French B2B SaaS community by Month 12
+- Position No Spray No Pray as "the ultra-qualified LinkedIn prospecting platform" within French B2B SaaS community by Month 12
 
 ## Background Context
 
-Traditional sales prospecting forces businesses to choose between inbound OR outbound strategies while being limited to single channels (email-only or LinkedIn-only tools). Existing solutions like Lemlist, Instantly, Apollo, and Clay are fragmented - requiring manual integration of 10+ point solutions with no true autonomous AI qualification. French-speaking SMBs and solo entrepreneurs spend 20-40 hours/week on manual prospecting that doesn't scale, limits outreach to 50-100 prospects/week, and achieves poor deliverability (40-60% spam folder placement).
+Traditional sales prospecting relies on "spray and pray" tactics - sending hundreds of generic messages hoping for a few responses. This approach damages sender reputation, achieves poor deliverability (40-60% spam folder placement), and wastes time on unqualified prospects. Existing solutions like Lemlist, Instantly, Apollo, and Clay focus on volume over quality - requiring manual integration of 10+ point solutions with no true intelligent warm-up strategy or autonomous AI qualification.
 
-Sales Machine converges four pillars into a single platform: (1) Intelligent multi-source targeting across 7+ platforms, (2) Advanced intent signal detection (12+ signals beyond basic job posts/funding), (3) All-bound strategy orchestration (inbound + outbound coordinated), and (4) AI conversational agent for autonomous qualification and meeting booking. The convergence advantage - combining Growth Marketing expertise + massive multi-channel tech stack + sophisticated AI + MCP modular architecture - creates a moat requiring competitors 12-18 months and 10+ person teams to replicate.
+**No Spray No Pray** revolutionizes prospecting by flipping the approach: **Quality over Quantity**. Instead of spraying 100+ generic messages, we focus on 20 ultra-qualified prospects per day with intelligent LinkedIn warm-up (7-15 days of engagement before connection request) and multi-canal AI conversations (LinkedIn + Email). The platform automatically:
+1. **Detects** 20 prospects/day matching precise ICP + Persona criteria
+2. **Enriches** each prospect with maximum context (profile + company page + website scraping + email finder)
+3. **Warms up** on LinkedIn before connection (likes, comments, engagement detection over 7-15 days)
+4. **Connects** with personalized invitation after warm-up period
+5. **Converses** via AI agent on LinkedIn + Email simultaneously for accepted connections, Email fallback for rejected connections
+
+This approach achieves higher connection acceptance rates (40-60% vs 10-20% cold), better conversation quality, and protects sender reputation through respectful, relationship-building prospecting.
 
 ## Change Log
 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
 | 2025-10-05 | 1.0 | Initial PRD creation based on Project Brief v1.0 | John (PM Agent) |
+| 2025-01-11 | 2.0 | Pivot to "No Spray No Pray" - LinkedIn-first ultra-qualified prospecting with warm-up strategy | John (PM Agent) |

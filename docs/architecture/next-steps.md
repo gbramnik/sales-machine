@@ -37,4 +37,4 @@
 
 **Ready for Development Handoff**
 
-This architecture provides a complete technical blueprint for building Sales Machine as a solo-preneur-friendly, AI-powered sales prospecting platform with enterprise-grade capabilities delivered through managed services and visual workflow orchestration.
+This architecture provides a complete technical blueprint for building No Spray No Pray as a solo-preneur-friendly, AI-powered ultra-qualified LinkedIn prospecting platform with enterprise-grade capabilities delivered through managed services and visual workflow orchestration.

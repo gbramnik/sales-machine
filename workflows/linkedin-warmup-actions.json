@@ -1,0 +1,269 @@
+{
+  "name": "LinkedIn Warm-up Actions",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "warmup/action",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "warmup-action",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate required parameters\nconst body = $input.item.json.body || $input.item.json;\nconst required = ['prospect_id', 'user_id', 'action_type'];\nconst missing = required.filter(field => !body[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\n// Validate action_type\nif (!['like', 'comment'].includes(body.action_type)) {\n  throw new Error('action_type must be either \"like\" or \"comment\"');\n}\n\nreturn { json: body };"
+      },
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "validate-input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-type-like",
+              "leftValue": "={{ $json.action_type }}",
+              "rightValue": "like",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Action Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "id": "check-action-type"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/like",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  post_url: $json.target_post_url || '',\n  prospect_linkedin_url: $json.prospect_linkedin_url || ''\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "UniPil Like Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 200],
+      "id": "unipil-like"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/comment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  post_url: $json.target_post_url || '',\n  comment_text: $json.comment_text || 'Great insights!',\n  prospect_linkedin_url: $json.prospect_linkedin_url || ''\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "UniPil Comment Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400],
+      "id": "unipil-comment"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge like and comment results\nconst input = $input.all();\nconst result = input[0]?.json || {};\n\n// Determine if action was successful\nconst success = result.success !== false && (!result.statusCode || result.statusCode === 200);\nconst errorMessage = result.error?.message || result.error || null;\n\nreturn {\n  json: {\n    ...result,\n    success,\n    error_message: errorMessage\n  }\n};"
+      },
+      "name": "Process Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "process-result"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "linkedin_warmup_actions",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $('validate-input').item.json.prospect_id }}",
+            "user_id": "={{ $('validate-input').item.json.user_id }}",
+            "action_type": "={{ $('validate-input').item.json.action_type }}",
+            "target_post_url": "={{ $('validate-input').item.json.target_post_url || null }}",
+            "target_author_linkedin_url": "={{ $('validate-input').item.json.target_author_linkedin_url || null }}",
+            "executed_at": "={{ $now.toISO() }}",
+            "success": "={{ $json.success }}",
+            "error_message": "={{ $json.error_message || null }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Log Action to Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "log-action"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: $('process-result').item.json.success,\n  action_id: $('log-action').item.json.id || null,\n  error: $('process-result').item.json.error_message || null\n}) }}",
+        "options": {}
+      },
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "id": "return-response"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Check Action Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Action Type": {
+      "main": [
+        [
+          {
+            "node": "UniPil Like Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "UniPil Comment Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UniPil Like Action": {
+      "main": [
+        [
+          {
+            "node": "Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UniPil Comment Action": {
+      "main": [
+        [
+          {
+            "node": "Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Result": {
+      "main": [
+        [
+          {
+            "node": "Log Action to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Action to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-12T00:00:00.000Z",
+  "versionId": "1"
+}
+

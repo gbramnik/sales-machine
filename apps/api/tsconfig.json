@@ -8,8 +8,12 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@sales-machine/shared": ["../../packages/shared/src"]
-    }
+      "@sales-machine/shared/*": ["../../packages/shared/src/*"],
+      "@sales-machine/shared": ["../../packages/shared/src/index.ts"]
+    },
+    "composite": true,
+    "skipLibCheck": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": ["src"],
   "references": [

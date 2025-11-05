@@ -1,6 +1,6 @@
 # Introduction
 
-This document outlines the complete fullstack architecture for **Sales Machine**, an AI-powered autonomous sales prospecting platform. It serves as the single source of truth for AI-driven development, ensuring consistency across the entire technology stack.
+This document outlines the complete fullstack architecture for **No Spray No Pray**, an AI-powered ultra-qualified LinkedIn prospecting platform. It serves as the single source of truth for AI-driven development, ensuring consistency across the entire technology stack.
 
 This unified approach combines backend systems, frontend implementation, and their integration, streamlining the development process for a modern fullstack application where these concerns are increasingly intertwined.
 

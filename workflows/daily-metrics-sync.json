@@ -1,0 +1,265 @@
+{
+  "name": "Daily Metrics Sync to Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 * * *"
+            }
+          ]
+        },
+        "triggerAt": "={{ $now.plus({ hours: 1 }) }}"
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, email, google_sheet_id FROM users WHERE google_sheet_id IS NOT NULL AND onboarding_completed = TRUE"
+      },
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "get-active-users"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split users into items for loop processing\nconst items = $input.all();\nreturn items.map(item => ({ json: item.json }));"
+      },
+      "name": "Split Users",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "id": "split-users"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get today's date in YYYY-MM-DD format\nconst today = new Date().toISOString().split('T')[0];\nconst user = $json;\n\nreturn {\n  json: {\n    user_id: user.id,\n    email: user.email,\n    google_sheet_id: user.google_sheet_id,\n    date: today\n  }\n};"
+      },
+      "name": "Prepare Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "prepare-date"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL}/api/metrics?date=${$json.date}` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.API_GATEWAY_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Metrics from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300],
+      "id": "get-metrics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map metrics to Google Sheets format\nconst metrics = $json;\nconst user = $('Prepare Date').item.json;\nconst date = user.date;\n\n// Campaign Overview row\nconst campaignRow = [\n  date,\n  metrics.campaign.total_scraped || 0,\n  metrics.campaign.total_enriched || 0,\n  metrics.campaign.total_contacted || 0,\n  metrics.campaign.total_replied || 0,\n  metrics.campaign.total_qualified || 0,\n  metrics.campaign.meetings_booked || 0,\n  metrics.campaign.meetings_per_100_prospects || 0\n];\n\n// Email Performance row\nconst emailRow = [\n  date,\n  metrics.email.sent_count || 0,\n  metrics.email.open_rate || 0,\n  metrics.email.reply_rate || 0,\n  metrics.email.bounce_rate || 0,\n  metrics.email.spam_complaint_rate || 0,\n  metrics.email.health_status || 'Unknown'\n];\n\n// AI Agent Performance row\nconst aiRow = [\n  date,\n  metrics.ai.total_conversations || 0,\n  metrics.ai.qualification_accuracy || 0,\n  metrics.ai.confidence_avg || 0\n];\n\nreturn {\n  json: {\n    user_id: user.user_id,\n    google_sheet_id: user.google_sheet_id,\n    campaign_row: campaignRow,\n    email_row: emailRow,\n    ai_row: aiRow\n  }\n};"
+      },
+      "name": "Map Metrics to Sheets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "id": "map-metrics"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://sheets.googleapis.com/v4/spreadsheets/${$json.google_sheet_id}/values/Campaign Overview!A1:append?valueInputOption=RAW` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.GOOGLE_SHEETS_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [$json.campaign_row] }) }}",
+        "options": {}
+      },
+      "name": "Append Campaign Overview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 200],
+      "id": "append-campaign"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://sheets.googleapis.com/v4/spreadsheets/${$json.google_sheet_id}/values/Email Performance!A1:append?valueInputOption=RAW` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.GOOGLE_SHEETS_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [$json.email_row] }) }}",
+        "options": {}
+      },
+      "name": "Append Email Performance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 300],
+      "id": "append-email"
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://sheets.googleapis.com/v4/spreadsheets/${$json.google_sheet_id}/values/AI Agent Performance!A1:append?valueInputOption=RAW` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.GOOGLE_SHEETS_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [$json.ai_row] }) }}",
+        "options": {}
+      },
+      "name": "Append AI Performance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 400],
+      "id": "append-ai"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Users": {
+      "main": [
+        [
+          {
+            "node": "Split Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Users": {
+      "main": [
+        [
+          {
+            "node": "Prepare Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Date": {
+      "main": [
+        [
+          {
+            "node": "Get Metrics from API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Metrics from API": {
+      "main": [
+        [
+          {
+            "node": "Map Metrics to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Metrics to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Append Campaign Overview",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Email Performance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append AI Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "daily-metrics-sync",
+  "meta": {
+    "instanceId": "n8n-cloud"
+  }
+}

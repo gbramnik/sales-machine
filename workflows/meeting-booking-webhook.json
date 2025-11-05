@@ -1,0 +1,426 @@
+{
+  "name": "Meeting Booking Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-booking",
+        "responseMode": "responseNode",
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "meeting-booking",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Cal.com webhook payload\nconst payload = $input.item.json.body || $input.item.json;\n\n// Extract event data\nconst eventType = payload.type || payload.event_type || 'BOOKING_CREATED';\nconst booking = payload.booking || payload.data || payload.payload || payload;\n\n// Map event types\nconst eventMap = {\n  'BOOKING_CREATED': 'booked',\n  'BOOKING_CANCELLED': 'cancelled',\n  'BOOKING_RESCHEDULED': 'rescheduled'\n};\n\nconst event_type = eventMap[eventType] || 'booked';\n\n// Extract booking details\nconst bookingId = booking.id || booking.uid || booking.bookingUid || '';\nconst scheduledTime = booking.startTime || booking.start_time || booking.start || '';\nconst attendees = booking.attendees || booking.invitees || [];\nconst firstAttendee = attendees[0] || booking;\nconst prospectEmail = firstAttendee.email || booking.email || booking.inviteeEmail || '';\nconst prospectName = firstAttendee.name || booking.name || booking.inviteeName || '';\nconst metadata = booking.metadata || booking.customInputs || payload.metadata || {};\n\nreturn {\n  json: {\n    event_type,\n    booking_id: bookingId,\n    scheduled_time: scheduledTime,\n    prospect_email: prospectEmail,\n    prospect_name: prospectName,\n    metadata,\n    raw_payload: payload\n  }\n};"
+      },
+      "name": "Parse Webhook Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "parse-payload"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-event-type",
+              "leftValue": "={{ $json.event_type }}",
+              "rightValue": "booked",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Event Type?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "id": "event-type-check"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, user_id, name, company, linkedin_url FROM public.prospects WHERE email = '{{ $json.prospect_email }}' OR id::text = '{{ $json.metadata.prospect_id }}' LIMIT 1"
+      },
+      "name": "Find Prospect",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [850, 200],
+      "id": "find-prospect"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT talking_points, company_insights FROM public.prospect_enrichment WHERE prospect_id = '{{ $json.id }}'::uuid LIMIT 1"
+      },
+      "name": "Get Enrichment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1050, 200],
+      "id": "get-enrichment"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build meeting data\nconst prospect = $json('Find Prospect');\nconst enrichment = $json('Get Enrichment');\nconst webhookData = $json('Parse Webhook Payload');\n\nconst meetingTopic = enrichment?.talking_points?.[0] || 'Discovery Call';\n\nreturn {\n  json: {\n    prospect_id: prospect.id,\n    user_id: prospect.user_id,\n    title: `Discovery Call: ${prospect.name} - ${prospect.company || ''}`,\n    description: `Meeting with ${prospect.name} from ${prospect.company || ''}. Topic: ${meetingTopic}`,\n    scheduled_at: webhookData.scheduled_time,\n    duration_minutes: 30,\n    calendar_event_id: webhookData.booking_id,\n    calendar_provider: 'cal_com',\n    status: 'scheduled',\n    attendees: JSON.stringify([{\n      email: webhookData.prospect_email,\n      name: webhookData.prospect_name || prospect.name\n    }]),\n    meeting_type: 'discovery',\n    prospect_name: prospect.name,\n    prospect_company: prospect.company,\n    prospect_email: webhookData.prospect_email\n  }\n};"
+      },
+      "name": "Build Meeting Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "id": "build-meeting-data"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "meetings",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "title": "={{ $json.title }}",
+            "description": "={{ $json.description }}",
+            "scheduled_at": "={{ $json.scheduled_at }}",
+            "duration_minutes": "={{ $json.duration_minutes }}",
+            "calendar_event_id": "={{ $json.calendar_event_id }}",
+            "calendar_provider": "={{ $json.calendar_provider }}",
+            "status": "={{ $json.status }}",
+            "attendees": "={{ JSON.parse($json.attendees) }}",
+            "meeting_type": "={{ $json.meeting_type }}"
+          }
+        }
+      },
+      "name": "Create Meeting Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1450, 200],
+      "id": "create-meeting"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "prospects",
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ 'meeting_booked' }}",
+            "updated_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json('Build Meeting Data').prospect_id }}"
+          }
+        }
+      },
+      "name": "Update Prospect Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1650, 200],
+      "id": "update-prospect-status"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/webhooks/cal/meeting-booked",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json('Parse Webhook Payload').raw_payload) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "name": "Call API Webhook Handler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1850, 200],
+      "id": "call-api-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'Meeting booking processed' }) }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2050, 200],
+      "id": "respond-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-cancelled",
+              "leftValue": "={{ $json.event_type }}",
+              "rightValue": "cancelled",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Cancelled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 400],
+      "id": "cancelled-check"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, prospect_id, user_id FROM public.meetings WHERE calendar_event_id = '{{ $json('Parse Webhook Payload').booking_id }}' LIMIT 1"
+      },
+      "name": "Find Meeting",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1050, 500],
+      "id": "find-meeting"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "meetings",
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ 'cancelled' }}",
+            "cancelled_at": "={{ $now.toISO() }}",
+            "cancellation_reason": "={{ 'Cancelled by prospect' }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json.id }}"
+          }
+        }
+      },
+      "name": "Update Meeting Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1250, 500],
+      "id": "update-meeting-status"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "prospects",
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ 'meeting_cancelled' }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json('Find Meeting').prospect_id }}"
+          }
+        }
+      },
+      "name": "Update Prospect Status (Cancelled)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1450, 500],
+      "id": "update-prospect-cancelled"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Webhook Payload": {
+      "main": [
+        [
+          {
+            "node": "Event Type?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type?": {
+      "main": [
+        [
+          {
+            "node": "Find Prospect",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cancelled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Prospect": {
+      "main": [
+        [
+          {
+            "node": "Get Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Build Meeting Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Meeting Data": {
+      "main": [
+        [
+          {
+            "node": "Create Meeting Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Meeting Record": {
+      "main": [
+        [
+          {
+            "node": "Update Prospect Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Prospect Status": {
+      "main": [
+        [
+          {
+            "node": "Call API Webhook Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call API Webhook Handler": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelled?": {
+      "main": [
+        [
+          {
+            "node": "Find Meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Meeting": {
+      "main": [
+        [
+          {
+            "node": "Update Meeting Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Meeting Status": {
+      "main": [
+        [
+          {
+            "node": "Update Prospect Status (Cancelled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Prospect Status (Cancelled)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-11T12:00:00.000Z",
+  "versionId": "1"
+}
+

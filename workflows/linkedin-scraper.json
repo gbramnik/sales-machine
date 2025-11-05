@@ -1,0 +1,547 @@
+{
+  "name": "LinkedIn Profile Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linkedin-scraper",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "linkedin-scraper",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate required parameters\nconst body = $input.item.json.body || $input.item.json;\nconst required = ['industry', 'user_id', 'campaign_id'];\nconst missing = required.filter(field => !body[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nreturn { json: body };"
+      },
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "validate-input"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  industry: $json.body.industry || $json.industry || '',\n  location: $json.body.location || $json.location || '',\n  job_title: $json.body.job_title || $json.job_title || '',\n  company_size: $json.body.company_size || $json.company_size || ''\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "UniPil API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300],
+      "id": "unipil-api"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "retry-condition",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "check-response"
+    },
+    {
+      "parameters": {
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "options": {
+          "exponentialBackoff": true
+        }
+      },
+      "name": "Retry on Failure",
+      "type": "n8n-nodes-base.retry",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "id": "retry-node"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map UniPil response to prospect format\n// Handle both UniPil response formats: { data: [...] } or { profiles: [...] } or direct array\nconst response = $input.item.json;\nconst profiles = response.data || response.profiles || response.output || [];\nconst validated = [];\nconst rejected = [];\n\nfor (const profile of profiles) {\n  // Extract data - handle both UniPil format (first_name/last_name or full_name) and legacy format (firstName/lastName)\n  const fullName = profile.full_name || `${profile.first_name || profile.firstName || ''} ${profile.last_name || profile.lastName || ''}`.trim();\n  const company = profile.company_name || profile.company || profile.companyName || '';\n  const jobTitle = profile.job_title || profile.headline || profile.jobTitle || '';\n  \n  // Validate required fields\n  if (!fullName || !company || !jobTitle) {\n    rejected.push({\n      profile,\n      reason: !fullName ? 'missing_name' : !company ? 'missing_company' : 'missing_job_title'\n    });\n    continue;\n  }\n  \n  validated.push({\n    full_name: fullName,\n    company_name: company,\n    job_title: jobTitle,\n    linkedin_url: profile.linkedin_url || profile.profileUrl || profile.linkedinUrl || '',\n    location: profile.location || '',\n    profile_summary: profile.profile_summary || profile.summary || profile.bio || '',\n    email: profile.email || null,\n    phone: profile.phone || null,\n    company_linkedin_url: profile.company_linkedin_url || profile.companyLinkedInUrl || null\n  });\n}\n\nreturn {\n  json: {\n    validated,\n    rejected,\n    total: profiles.length,\n    validatedCount: validated.length,\n    rejectedCount: rejected.length\n  }\n};"
+      },
+      "name": "Validate & Map Profiles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400],
+      "id": "validate-profiles"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.validated.map(p => `\n  INSERT INTO public.prospects (\n    user_id, campaign_id, full_name, company_name, job_title,\n    linkedin_url, location, profile_summary, email, phone, status, source\n  ) VALUES (\n    '{{ $json.body.user_id || $('Webhook Trigger').item.json.body.user_id }}'::uuid,\n    '{{ $json.body.campaign_id || $('Webhook Trigger').item.json.body.campaign_id }}'::uuid,\n    '${p.full_name.replace(/'/g, \"''\")}',\n    '${p.company_name.replace(/'/g, \"''\")}',\n    '${p.job_title.replace(/'/g, \"''\")}',\n    '${(p.linkedin_url || '').replace(/'/g, \"''\")}',\n    '${(p.location || '').replace(/'/g, \"''\")}',\n    '${(p.profile_summary || '').replace(/'/g, \"''\")}',\n    ${p.email ? `'${p.email.replace(/'/g, \"''\")}'` : 'NULL'},\n    ${p.phone ? `'${p.phone.replace(/'/g, \"''\")}'` : 'NULL'},\n    'new',\n    'linkedin_scrape'\n  )\n  ON CONFLICT (linkedin_url) DO NOTHING\n  RETURNING id, user_id\n`).join(';') }}"
+      },
+      "name": "Store in Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1050, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "store-supabase"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract prospect IDs and company LinkedIn URLs from stored prospects\nconst storedProspects = $input.all();\nconst allValidated = $('Validate & Map Profiles').item.json.validated || [];\nconst prospects = [];\n\nfor (const item of storedProspects) {\n  // Handle both single result and array results\n  const results = Array.isArray(item.json) ? item.json : [item.json];\n  \n  for (const result of results) {\n    if (result.id && result.user_id) {\n      // Find matching validated profile to get company_linkedin_url\n      const validatedProfile = allValidated.find(p => p.linkedin_url && result.linkedin_url && p.linkedin_url === result.linkedin_url);\n      prospects.push({\n        prospect_id: result.id,\n        user_id: result.user_id,\n        company_linkedin_url: validatedProfile?.company_linkedin_url || null,\n        company_name: validatedProfile?.company_name || null\n      });\n    }\n  }\n}\n\nreturn prospects.map(p => ({ json: p }));"
+      },
+      "name": "Extract Prospect IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 400],
+      "id": "extract-prospect-ids"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split prospects into items for loop processing\nconst items = $input.all();\nreturn items.map(item => ({ json: item.json }));"
+      },
+      "name": "Split Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 400],
+      "id": "split-items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-company-url",
+              "leftValue": "={{ $json.company_linkedin_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Has Company URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1650, 400],
+      "id": "has-company-url-check"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.UNIPIL_API_URL || 'https://api.unipil.io'}/api/v1/linkedin/company/${encodeURIComponent($json.company_linkedin_url)}` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Get Company Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1850, 300],
+      "id": "get-company-page"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map company page data to company_data structure\nconst companyPage = $json.data || $json;\nconst prospect = $('Split Items').item.json;\n\nconst companyData = {\n  linkedin_url: companyPage.linkedin_url || prospect.company_linkedin_url || '',\n  description: companyPage.description || companyPage.company_description || '',\n  industry: companyPage.industry || '',\n  size: companyPage.company_size || companyPage.size || '',\n  headquarters: companyPage.headquarters || companyPage.location || '',\n  website_url: companyPage.website || companyPage.website_url || '',\n  website_description: '', // Will be filled by web scraping if implemented\n  products_services: [], // Will be filled by web scraping if implemented\n  recent_news: [], // Will be filled by web scraping if implemented\n  contact_info: {} // Will be filled by web scraping if implemented\n};\n\nreturn {\n  json: {\n    prospect_id: prospect.prospect_id,\n    user_id: prospect.user_id,\n    company_data: companyData\n  }\n};"
+      },
+      "name": "Map Company Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 300],
+      "id": "map-company-data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.prospect_enrichment (prospect_id, user_id, company_data)\nVALUES ($1::uuid, $2::uuid, $3::jsonb)\nON CONFLICT (prospect_id) DO UPDATE\nSET company_data = $3::jsonb\nRETURNING id, prospect_id",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id, $json.user_id, JSON.stringify($json.company_data)] }}"
+        }
+      },
+      "name": "Store Company Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "store-company-data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through prospects without company URL (skip company extraction)\nconst prospect = $json;\nreturn { json: prospect };"
+      },
+      "name": "Skip Company Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 500],
+      "id": "skip-company"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO linkedin_warmup_schedule (prospect_id, user_id, warmup_start_at, connection_ready_at, status)\nSELECT \n  $1::uuid,\n  $2::uuid,\n  NOW(),\n  NOW() + INTERVAL '1 day' * COALESCE((SELECT warmup_duration_days FROM users WHERE id = $2::uuid), 10),\n  'warmup_in_progress'\nWHERE NOT EXISTS (\n  SELECT 1 FROM linkedin_warmup_schedule \n  WHERE prospect_id = $1::uuid AND user_id = $2::uuid\n)\nRETURNING id, connection_ready_at",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id, $json.user_id] }}"
+        }
+      },
+      "name": "Start Warm-up Schedule",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1450, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "start-warmup"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL }}/webhooks/n8n/scraping-failed",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $('Webhook Trigger').item.json.body.user_id }}"
+            },
+            {
+              "name": "campaign_id",
+              "value": "={{ $('Webhook Trigger').item.json.body.campaign_id }}"
+            },
+            {
+              "name": "error",
+              "value": "={{ $json.error || 'UniPil scraping failed after 3 retries' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Notify Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 100],
+      "id": "notify-error"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.audit_log (user_id, event_type, entity_type, entity_id, new_values)\nVALUES (\n  $1::uuid,\n  'scraping_execution',\n  'campaign',\n  $2::uuid,\n  $3::jsonb\n)",
+        "options": {
+          "queryParameters": "={{ [\n  $('Webhook Trigger').item.json.body.user_id,\n  $('Webhook Trigger').item.json.body.campaign_id,\n  JSON.stringify({\n    execution_id: $execution.id,\n    profiles_scraped: $('Validate & Map Profiles').item.json.total || 0,\n    profiles_validated: $('Validate & Map Profiles').item.json.validatedCount || 0,\n    profiles_rejected: $('Validate & Map Profiles').item.json.rejectedCount || 0,\n    companies_enriched: $('Store Company Data').all().length || 0,\n    execution_time_ms: $execution.resumeUrl ? 0 : Date.now() - $execution.startedAt,\n    success: true,\n    cost_estimate_eur: 5.0 / 30.0 / 24.0 / 60.0 * ($('Validate & Map Profiles').item.json.total || 0)\n  })\n] }}"
+        }
+      },
+      "name": "Log Execution Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2450, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "log-metrics"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  execution_id: $execution.id,\n  validated_count: $('Validate & Map Profiles').item.json.validatedCount || 0,\n  rejected_count: $('Validate & Map Profiles').item.json.rejectedCount || 0,\n  total_profiles: $('Validate & Map Profiles').item.json.total || 0,\n  warmup_started: $('Start Warm-up Schedule').all().length || 0,\n  companies_enriched: $('Store Company Data').all().length || 0\n}) }}"
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2650, 400],
+      "id": "respond-webhook"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "UniPil API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UniPil API": {
+      "main": [
+        [
+          {
+            "node": "Check Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response": {
+      "main": [
+        [
+          {
+            "node": "Retry on Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate & Map Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry on Failure": {
+      "main": [
+        [
+          {
+            "node": "UniPil API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Map Profiles": {
+      "main": [
+        [
+          {
+            "node": "Store in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Extract Prospect IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Prospect IDs": {
+      "main": [
+        [
+          {
+            "node": "Split Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Items": {
+      "main": [
+        [
+          {
+            "node": "Has Company URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Company URL?": {
+      "main": [
+        [
+          {
+            "node": "Get Company Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Company Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company Page": {
+      "main": [
+        [
+          {
+            "node": "Map Company Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Company Data": {
+      "main": [
+        [
+          {
+            "node": "Store Company Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Company Data": {
+      "main": [
+        [
+          {
+            "node": "Start Warm-up Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Company Extraction": {
+      "main": [
+        [
+          {
+            "node": "Start Warm-up Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Warm-up Schedule": {
+      "main": [
+        [
+          {
+            "node": "Log Execution Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution Metrics": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Error": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "linkedin-scraper",
+  "meta": {
+    "instanceId": "n8n-cloud"
+  }
+}
+

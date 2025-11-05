@@ -181,7 +181,6 @@ sales-machine/
 │       ├── src/types/   # TypeScript type definitions
 │       └── package.json
 ├── workflows/           # N8N workflow definitions (JSON)
-├── mcp-servers/         # MCP server implementations
 ├── scripts/             # Deployment and utility scripts
 ├── docs/                # Documentation
 │   ├── prd/            # Product requirements
@@ -314,8 +313,12 @@ npm run build
 | `REDIS_TOKEN` | Upstash Redis REST token | Yes |
 | `N8N_WEBHOOK_URL` | N8N webhook base URL | Yes |
 | `N8N_API_KEY` | N8N API key | Yes |
-| `CLAUDE_API_KEY` | Claude API key | Later |
-| `INSTANTLY_API_KEY` | Instantly API key | Later |
+| `CLAUDE_API_KEY` | Claude API key | Yes |
+| `UNIPIL_API_KEY` | UniPil API key for LinkedIn automation | Yes |
+| `SMTP_HOST` | SMTP server host (SendGrid/Mailgun/AWS SES) | Yes |
+| `SMTP_USER` | SMTP username | Yes |
+| `SMTP_PASS` | SMTP password | Yes |
+| `EMAIL_FINDER_API_KEY` | Email finder API key (Anymail/Better Contacts) | Later |
 | `CAL_COM_API_KEY` | Cal.com API key | Later |
 
 ## Next Steps

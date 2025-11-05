@@ -59,14 +59,15 @@ Create the technical architecture document covering:
    - Supabase Row Level Security (RLS) policies for multi-tenant data isolation
 
 3. **N8N Workflow Architecture:**
-   - Workflow definitions for: LinkedIn scraping, AI enrichment, email scheduler, AI agent response, meeting booking
+   - Workflow definitions for: Daily prospect detection, LinkedIn warm-up, LinkedIn scraping, enrichment, SMTP email sending, AI agent response (LinkedIn + Email), meeting booking
    - Error handling patterns (retry logic with exponential backoff, failure notifications)
-   - Webhook routing from Instantly.ai/Smartlead email replies to AI agent workflow
+   - Webhook routing from SMTP email replies to AI agent workflow
 
-4. **MCP Architecture (Epic 4):**
-   - MCP server protocol design for Scraping and Enrichment categories
-   - PhantomBuster adapter implementation (wrapping existing integration)
-   - Environment variable configuration for provider swapping (SCRAPING_PROVIDER, ENRICHMENT_PROVIDER)
+4. **MCP Architecture (Epic 4):** *Deferred to Post-MVP*
+   - ~~MCP server protocol design for Scraping and Enrichment categories~~
+   - ~~PhantomBuster adapter implementation (wrapping existing integration)~~
+   - ~~Environment variable configuration for provider swapping (SCRAPING_PROVIDER, ENRICHMENT_PROVIDER)~~
+   - **Note:** MCP abstraction layer is deferred. Direct integrations (UniPil, SMTP, Email Finder) will be used for MVP. MCP can be considered for Phase 2+ if tool flexibility becomes a priority.
 
 5. **API Specifications:**
    - REST endpoints for onboarding wizard: POST /onboarding/start, POST /onboarding/step/{step_id}

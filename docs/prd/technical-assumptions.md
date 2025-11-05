@@ -54,8 +54,8 @@
 - ⚠️ Webhook complexity requires robust error handling and retry logic
 
 **Micro-MVP Simplification:**
-- **Direct integrations OK:** Skip MCP layer initially (PhantomBuster, Instantly.ai, Claude API directly in N8N workflows) - refactor to MCP in Full MVP
-- **Rationale:** 6-week timeline prioritizes speed over architecture purity - MCP value proven in Full MVP phase
+- **Direct integrations OK:** Skip MCP layer initially (UniPil, SMTP, Email Finder, Claude API directly in N8N workflows) - MCP abstraction deferred to Post-MVP (Phase 2+)
+- **Rationale:** MVP "No Spray No Pray" timeline prioritizes speed over architecture purity. Direct integrations (UniPil, SMTP, Email Finder) are sufficient for MVP. MCP can be considered later if tool flexibility becomes a priority.
 
 ## Testing Requirements
 
@@ -141,13 +141,14 @@
 - **Secrets Management:** Environment variables via Railway/Render platform (Doppler or AWS Secrets Manager for Full MVP)
 - **Encryption:** TLS/HTTPS for all communications, Supabase encryption-at-rest
 
-**Third-Party Integrations (MCP-Ready):**
+**Third-Party Integrations (MVP):**
 - **Database & Cache:** Supabase (PostgreSQL + Auth + Realtime), Upstash Redis (serverless cache/sessions/queues)
-- **Scraping:** PhantomBuster (primary), Captain Data (backup) - MCP abstraction enables swap
-- **Enrichment:** Claude API (Anthropic), BuiltWith API, custom web scrapers
-- **Email Outreach:** Instantly.ai (primary) or Smartlead (alternative) - evaluate both in Micro-MVP, pick best
+- **LinkedIn Automation:** UniPil API (LinkedIn scraping, warm-up, connections, messaging)
+- **Email Sending:** Dedicated SMTP server (SendGrid, Mailgun, or AWS SES)
+- **Email Finder:** Anymail or Better Contacts (to be determined)
+- **Enrichment:** Claude API (Anthropic), custom web scrapers
 - **Calendar:** Cal.com (open-source preference) or Calendly
-- **Rationale:** All integrations designed for replaceability via MCP - no vendor lock-in
+- **Note:** Direct integrations used for MVP. MCP abstraction layer deferred to Post-MVP (Phase 2+) if tool flexibility becomes a priority.
 
 **Deployment & CI/CD:**
 - **Hosting:** Railway (preferred for simplicity) or Render/Fly.io

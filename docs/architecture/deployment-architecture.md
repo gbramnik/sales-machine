@@ -73,10 +73,10 @@ railway rollback --environment production
 **Verification After Rollback:**
 ```bash
 # Check API health
-curl https://api.sales-machine.com/health
+curl https://api.no-spray-no-pray.com/health
 
 # Check frontend loads
-curl -I https://app.sales-machine.com
+curl -I https://app.no-spray-no-pray.com
 
 # Verify database connectivity
 psql $SUPABASE_DB_URL -c "SELECT 1;"
@@ -115,7 +115,7 @@ instances:
 | Environment | Frontend URL | Backend URL | Purpose |
 |-------------|-------------|-------------|---------|
 | Development | localhost:5173 | localhost:3000 | Local development |
-| Staging | staging.sales-machine.com | api-staging.sales-machine.com | Pre-production testing |
-| Production | app.sales-machine.com | api.sales-machine.com | Live environment |
+| Staging | staging.no-spray-no-pray.com | api-staging.no-spray-no-pray.com | Pre-production testing |
+| Production | app.no-spray-no-pray.com | api.no-spray-no-pray.com | Live environment |
 
 ---

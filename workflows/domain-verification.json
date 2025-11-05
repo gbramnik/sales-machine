@@ -1,0 +1,168 @@
+{
+  "name": "Domain Verification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "domain-verification",
+        "responseMode": "responseNode",
+        "options": {
+          "onError": "continueRegularOutput"
+        },
+        "onError": "continueRegularOutput"
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "domain-verification",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate input\nconst body = $input.item.json.body || $input.item.json;\nconst domain = body.domain || body.user_id;\n\nif (!domain) {\n  throw new Error('Domain or user_id required');\n}\n\nreturn { json: { domain, user_id: body.user_id } };"
+      },
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "validate-input"
+    },
+    {
+      "parameters": {
+        "url": "=https://cloudflare-dns.com/dns-query?name={{ $json.domain }}&type=TXT",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/dns-json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Query DNS TXT Records",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300],
+      "id": "query-dns"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse DNS records and check SPF, DKIM, DMARC\nconst dnsResponse = $input.item.json;\nconst txtRecords = dnsResponse.Answer || [];\n\nconst domain = $json.domain;\nconst verificationStatus = {\n  spf: false,\n  dkim: false,\n  dmarc: false,\n  verified_at: null\n};\n\n// Check SPF record\nconst spfRecord = txtRecords.find(r => r.data.includes('v=spf1'));\nif (spfRecord) {\n  verificationStatus.spf = true;\n}\n\n// Check DKIM record (usually _domainkey subdomain)\n// Note: This is simplified - real DKIM check requires domain-specific selector\nconst dkimRecord = txtRecords.find(r => r.data.includes('v=DKIM1'));\nif (dkimRecord) {\n  verificationStatus.dkim = true;\n}\n\n// Check DMARC record (usually _dmarc subdomain)\nconst dmarcRecord = txtRecords.find(r => r.data.includes('v=DMARC1'));\nif (dmarcRecord) {\n  verificationStatus.dmarc = true;\n}\n\n// If all verified, set timestamp\nif (verificationStatus.spf && verificationStatus.dkim && verificationStatus.dmarc) {\n  verificationStatus.verified_at = new Date().toISOString();\n}\n\nreturn {\n  json: {\n    ...$json,\n    verification_status: verificationStatus\n  }\n};"
+      },
+      "name": "Parse DNS Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "parse-dns"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "users",
+          "mode": "list"
+        },
+        "updateKey": "id",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "domain_verification_status": "={{ JSON.stringify($json.verification_status) }}"
+          },
+          "matchingColumns": {
+            "id": "={{ $json.user_id }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Update Verification Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1050, 300],
+      "id": "update-status"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, verification_status: $json.verification_status }) }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "id": "respond"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Query DNS TXT Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query DNS TXT Records": {
+      "main": [
+        [
+          {
+            "node": "Parse DNS Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse DNS Records": {
+      "main": [
+        [
+          {
+            "node": "Update Verification Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Verification Status": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-11T12:00:00.000Z",
+  "versionId": "1"
+}
+

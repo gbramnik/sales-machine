@@ -1,8 +1,8 @@
-# Sales Machine - Fullstack Architecture Document
+# No Spray No Pray - Fullstack Architecture Document
 
 ## Table of Contents
 
-- [Sales Machine - Fullstack Architecture Document](#table-of-contents)
+  - [No Spray No Pray - Fullstack Architecture Document](#table-of-contents)
   - [Table of Contents](./table-of-contents.md)
   - [Introduction](./introduction.md)
     - [Starter Template or Existing Project](./introduction.md#starter-template-or-existing-project)

@@ -59,14 +59,14 @@
 **Ready for Architect Handoff:**
 - ✅ Tech stack specified (React, Node.js, Supabase, Upstash Redis, N8N Cloud, Railway)
 - ✅ Architecture pattern documented (Hybrid microservices via N8N workflows + API Gateway)
-- ✅ MCP abstraction layer requirements defined (Scraping, Enrichment categories)
+- ✅ Direct integrations specified (UniPil, SMTP, Email Finder) - MCP abstraction deferred to Post-MVP
 - ✅ Testing strategy outlined (Unit + Integration + Manual QA + Humanness Testing)
 - ✅ Third-party integrations identified with alternatives
 
 **Areas for Architect Investigation:**
 1. Database schema design and Supabase RLS policies
 2. N8N workflow architecture and error handling patterns
-3. MCP server protocol implementation
+3. ~~MCP server protocol implementation~~ *Deferred to Post-MVP*
 4. Redis cache strategy (TTL policies, eviction, warming)
 5. API endpoint specifications and authentication flows
 

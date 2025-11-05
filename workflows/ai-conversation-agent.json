@@ -1,0 +1,480 @@
+{
+  "name": "AI Conversation Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smtp/email-reply",
+        "responseMode": "responseNode",
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "name": "Email Reply Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 200],
+      "webhookId": "email-reply",
+      "id": "email-webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "unipil/linkedin-reply",
+        "responseMode": "responseNode",
+        "options": {
+          "onError": "continueRegularOutput"
+        }
+      },
+      "name": "LinkedIn Reply Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "webhookId": "linkedin-reply",
+      "id": "linkedin-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse webhook payload and determine channel\nconst payload = $input.item.json.body || $input.item.json;\nconst webhookId = $json.webhookId || '';\n\n// Determine channel\nlet channel = 'email';\nlet prospectEmail = null;\nlet prospectLinkedinUrl = null;\nlet replyText = null;\nlet threadId = null;\nlet messageId = null;\n\nif (webhookId === 'email-reply' || payload['event-data'] || payload.email) {\n  // Email reply (Mailgun/SendGrid format)\n  channel = 'email';\n  prospectEmail = payload['event-data']?.message?.headers?.['From'] ||\n                  payload['event-data']?.recipient ||\n                  payload.email ||\n                  payload.from;\n  replyText = payload['event-data']?.message?.body?.text ||\n               payload['event-data']?.message?.body?.plain ||\n               payload.text ||\n               payload.body;\n  threadId = payload['event-data']?.message?.headers?.['In-Reply-To'] ||\n             payload['event-data']?.message?.headers?.['References'] ||\n             payload.headers?.['In-Reply-To'] ||\n             payload.headers?.['References'];\n  messageId = payload['event-data']?.message?.headers?.['Message-Id'] ||\n              payload['event-data']?.message?.headers?.['message-id'] ||\n              payload.message_id ||\n              payload.sg_message_id;\n} else {\n  // LinkedIn reply (UniPil format)\n  channel = 'linkedin';\n  prospectLinkedinUrl = payload.linkedin_url || payload.profile_url || payload.sender?.profile_url;\n  replyText = payload.message_text || payload.text || payload.message || payload.body;\n  threadId = payload.thread_id || payload.conversation_id || payload.message_id;\n  messageId = payload.message_id || payload.id || payload.uid;\n}\n\nif (!replyText) {\n  throw new Error('Missing reply_text in webhook payload');\n}\n\nreturn {\n  json: {\n    channel,\n    prospect_email: prospectEmail,\n    prospect_linkedin_url: prospectLinkedinUrl,\n    reply_text: replyText,\n    thread_id: threadId,\n    message_id: messageId,\n    raw_payload: payload\n  }\n};"
+      },
+      "name": "Parse Webhook Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "id": "parse-payload"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, user_id, full_name, company_name, job_title, email, linkedin_url, status, is_vip, email_confidence_score FROM public.prospects WHERE (email = '{{ $json.prospect_email }}' OR linkedin_url = '{{ $json.prospect_linkedin_url }}') LIMIT 1"
+      },
+      "name": "Find Prospect",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [650, 300],
+      "id": "find-prospect"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate sentiment from reply text\nconst replyText = ($json.reply_text || '').toLowerCase();\n\nconst positiveKeywords = ['interested', 'yes', 'sounds good', \"let's talk\", 'sure', 'okay', 'great', 'perfect', 'excellent', 'definitely', 'absolutely'];\nconst negativeKeywords = ['not interested', 'no thanks', 'stop', 'unsubscribe', 'remove', 'delete', 'no', \"don't\", \"can't\", 'unable', 'busy'];\n\nconst hasPositive = positiveKeywords.some(keyword => replyText.includes(keyword));\nconst hasNegative = negativeKeywords.some(keyword => replyText.includes(keyword));\n\nlet sentiment = 'neutral';\nif (hasPositive && !hasNegative) {\n  sentiment = 'positive';\n} else if (hasNegative) {\n  sentiment = 'negative';\n}\n\nreturn {\n  json: {\n    ...$json,\n    sentiment\n  }\n};"
+      },
+      "name": "Calculate Sentiment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "calculate-sentiment"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT talking_points, pain_points, company_insights, recent_activity, company_data FROM public.prospect_enrichment WHERE prospect_id = '{{ $json('Find Prospect').id }}'::uuid LIMIT 1"
+      },
+      "name": "Fetch Enrichment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1050, 300],
+      "id": "fetch-enrichment"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT direction, channel, message_text, generated_by_ai, ai_confidence_score, sentiment, created_at FROM public.ai_conversation_log WHERE prospect_id = '{{ $json('Find Prospect').id }}'::uuid AND (thread_id = '{{ $json('Parse Webhook Payload').thread_id }}' OR thread_id IS NULL) ORDER BY created_at DESC LIMIT 10"
+      },
+      "name": "Fetch Thread History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1250, 300],
+      "id": "fetch-thread"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build context object for Claude API\nconst prospect = $json('Find Prospect');\nconst enrichment = $json('Fetch Enrichment') || {};\nconst threadHistory = $json('Fetch Thread History') || [];\nconst parsed = $json('Calculate Sentiment');\n\nconst context = {\n  prospect: {\n    name: prospect.full_name || '',\n    company: prospect.company_name || null,\n    job_title: prospect.job_title || null,\n    email: prospect.email || null,\n    linkedin_url: prospect.linkedin_url || null\n  },\n  enrichment: {\n    talking_points: enrichment.talking_points || [],\n    pain_points: enrichment.pain_points || [],\n    company_insights: enrichment.company_insights || null,\n    recent_activity: enrichment.recent_activity || null\n  },\n  thread_history: threadHistory.map((msg: any) => ({\n    direction: msg.direction,\n    channel: msg.channel,\n    message_text: msg.message_text || '',\n    generated_by_ai: msg.generated_by_ai || false,\n    ai_confidence_score: msg.ai_confidence_score || null,\n    sentiment: msg.sentiment || null,\n    created_at: msg.created_at\n  })),\n  reply_text: parsed.reply_text,\n  channel: parsed.channel,\n  sentiment: parsed.sentiment,\n  prospect_id: prospect.id,\n  user_id: prospect.user_id,\n  thread_id: parsed.thread_id || `thread_${prospect.id}_${Date.now()}`,\n  message_id: parsed.message_id\n};\n\nreturn {\n  json: context\n};"
+      },
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "id": "build-context"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/ai/qualify",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "name": "Call Claude API (via API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 300],
+      "id": "call-claude"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude API response\nconst response = $json('Call Claude API (via API)');\nconst qualificationResult = response.data || response;\n\n// Validate response structure\nconst result = {\n  qualification_status: qualificationResult.qualification_status || 'needs_more_info',\n  proposed_response_template_id: qualificationResult.proposed_response_template_id || null,\n  proposed_channel: qualificationResult.proposed_channel || $json('Build Context').channel,\n  confidence_score: qualificationResult.confidence_score || 0,\n  reasoning: qualificationResult.reasoning || 'No reasoning provided'\n};\n\n// Merge with context\nreturn {\n  json: {\n    ...$json('Build Context'),\n    qualification_result: result\n  }\n};"
+      },
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300],
+      "id": "parse-claude"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-qualified",
+              "leftValue": "={{ $json.qualification_result.qualification_status }}",
+              "rightValue": "qualified",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "check-confidence",
+              "leftValue": "={{ $json.qualification_result.confidence_score }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "largerEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Qualified & High Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2050, 200],
+      "id": "check-qualified"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/meetings/generate-link",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ prospect_id: $json.prospect_id, user_id: $json.user_id }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "name": "Generate Booking Link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2250, 100],
+      "id": "generate-booking"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-confidence-low",
+              "leftValue": "={{ $json.qualification_result.confidence_score }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Low Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2050, 400],
+      "id": "check-low-conf"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_review_queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "message_type": "={{ 'reply_response' }}",
+            "proposed_subject": "={{ $json.qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
+            "proposed_message": "={{ $json('Parse Claude Response').qualification_result.reasoning }}",
+            "ai_confidence_score": "={{ $json.qualification_result.confidence_score }}",
+            "ai_reasoning": "={{ $json.qualification_result.reasoning }}",
+            "status": "={{ 'pending' }}"
+          }
+        }
+      },
+      "name": "Queue for Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2250, 500],
+      "id": "queue-review"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_conversation_log",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "direction": "={{ 'inbound' }}",
+            "channel": "={{ $json.channel }}",
+            "message_text": "={{ $json.reply_text }}",
+            "generated_by_ai": "={{ false }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "thread_id": "={{ $json.thread_id }}",
+            "email_message_id": "={{ $json.channel === 'email' ? $json.message_id : null }}",
+            "received_at": "={{ $now.toISO() }}"
+          }
+        }
+      },
+      "name": "Log Prospect Reply",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [850, 500],
+      "id": "log-reply"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'Conversation processed' }) }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2450, 300],
+      "id": "respond-webhook"
+    }
+  ],
+  "connections": {
+    "Email Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Webhook Payload": {
+      "main": [
+        [
+          {
+            "node": "Find Prospect",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Prospect Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Prospect": {
+      "main": [
+        [
+          {
+            "node": "Calculate Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Fetch Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Fetch Thread History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Thread History": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "Call Claude API (via API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude API (via API)": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Qualified & High Confidence?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualified & High Confidence?": {
+      "main": [
+        [
+          {
+            "node": "Generate Booking Link",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Low Confidence?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Booking Link": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Confidence?": {
+      "main": [
+        [
+          {
+            "node": "Queue for Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue for Review": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-11T12:00:00.000Z",
+  "versionId": "1"
+}
+

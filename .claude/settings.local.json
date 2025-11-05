@@ -7,7 +7,11 @@
       "Bash(export:*)",
       "Bash(export N8N_WEBHOOK_URL=\"https://n8n.srv997159.hstgr.cloud\")",
       "Bash(bash:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npx supabase gen types typescript:*)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(npx supabase login)"
     ],
     "deny": [],
     "ask": []

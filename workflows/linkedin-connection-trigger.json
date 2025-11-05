@@ -1,0 +1,250 @@
+{
+  "name": "LinkedIn Connection Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger (Hourly)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM linkedin_warmup_schedule WHERE connection_ready_at <= NOW() AND status = 'warmup_in_progress' ORDER BY connection_ready_at ASC",
+        "options": {}
+      },
+      "name": "Get Ready Prospects",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "get-ready-prospects"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.*, pe.talking_points, pe.company_data FROM prospects p LEFT JOIN prospect_enrichment pe ON p.id = pe.prospect_id WHERE p.id = $1",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id] }}"
+        }
+      },
+      "name": "Get Prospect & Enrichment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "get-prospect-enrichment"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM email_templates WHERE channel = 'linkedin' AND use_case = 'cold_intro' AND (user_id = $1 OR is_system_template = true) ORDER BY is_system_template DESC, created_at DESC LIMIT 1",
+        "options": {
+          "queryParameters": "={{ [$json.user_id] }}"
+        }
+      },
+      "name": "Get LinkedIn Template",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "get-template"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate personalized connection message\nconst prospect = $('get-prospect-enrichment').item.json;\nconst template = $('get-template').item.json;\nconst talkingPoints = prospect.talking_points || [];\n\n// Replace template variables\nlet connectionNote = template.linkedin_message_preview || template.body || '';\nconnectionNote = connectionNote\n  .replace(/{{prospect_name}}/g, prospect.full_name || 'there')\n  .replace(/{{company}}/g, prospect.company_name || '')\n  .replace(/{{talking_point_1}}/g, talkingPoints[0] || 'your recent work')\n  .replace(/{{linkedin_connection_note}}/g, '');\n\n// Ensure max 300 characters (LinkedIn limit)\nif (connectionNote.length > 300) {\n  connectionNote = connectionNote.substring(0, 297) + '...';\n}\n\nreturn {\n  json: {\n    prospect_linkedin_url: prospect.linkedin_url,\n    connection_note: connectionNote,\n    prospect_id: prospect.id,\n    user_id: prospect.user_id\n  }\n};"
+      },
+      "name": "Generate Connection Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "generate-message"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/connection-request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  prospect_linkedin_url: $json.prospect_linkedin_url,\n  connection_note: $json.connection_note\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Send Connection Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "id": "send-connection"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE linkedin_warmup_schedule SET status = 'ready_for_connection', connection_sent_at = NOW() WHERE prospect_id = $1",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id] }}"
+        }
+      },
+      "name": "Update Warm-up Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "update-status"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE prospects SET status = 'connection_sent', last_contacted_at = NOW() WHERE id = $1",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id] }}"
+        }
+      },
+      "name": "Update Prospect Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "update-prospect"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Hourly)": {
+      "main": [
+        [
+          {
+            "node": "Get Ready Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Ready Prospects": {
+      "main": [
+        [
+          {
+            "node": "Get Prospect & Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Prospect & Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Get LinkedIn Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LinkedIn Template": {
+      "main": [
+        [
+          {
+            "node": "Generate Connection Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Connection Message": {
+      "main": [
+        [
+          {
+            "node": "Send Connection Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Connection Request": {
+      "main": [
+        [
+          {
+            "node": "Update Warm-up Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Warm-up Status": {
+      "main": [
+        [
+          {
+            "node": "Update Prospect Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-12T00:00:00.000Z",
+  "versionId": "1"
+}
+

@@ -1,8 +1,5 @@
+import { DemoDashboard } from './components/DemoDashboard'
+
 export function App() {
-  return (
-    <div>
-      <h1>Sales Machine</h1>
-      <p>Coming soon...</p>
-    </div>
-  );
+  return <DemoDashboard />
 }

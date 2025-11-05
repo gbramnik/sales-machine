@@ -1,0 +1,174 @@
+{
+  "name": "Daily Warm-up Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM linkedin_warmup_schedule WHERE status = 'warmup_in_progress' AND connection_ready_at > NOW() ORDER BY connection_ready_at ASC",
+        "options": {}
+      },
+      "name": "Get Active Warm-ups",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "get-active-warmups"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT warmup_duration_days, daily_likes_limit, daily_comments_limit, account_type FROM users WHERE id = $1",
+        "options": {
+          "queryParameters": "={{ $json.user_id }}"
+        }
+      },
+      "name": "Get User Config",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "get-user-config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// For each prospect, calculate actions to perform\nconst warmupSchedule = $input.item.json;\nconst userConfig = $('get-user-config').item.json || {};\n\n// Get daily limits (defaults if not set)\nconst dailyLikesLimit = userConfig.daily_likes_limit || 20;\nconst dailyCommentsLimit = userConfig.daily_comments_limit || 20;\nconst accountType = userConfig.account_type || 'basic';\n\n// Calculate actions per prospect (distribute throughout day)\n// 60% likes, 40% comments\nconst actionsPerProspect = Math.floor((dailyLikesLimit + dailyCommentsLimit) / 10); // Adjust based on number of prospects\nconst likesCount = Math.floor(actionsPerProspect * 0.6);\nconst commentsCount = Math.floor(actionsPerProspect * 0.4);\n\n// Generate random times throughout the day (8 AM to 8 PM)\nconst actions = [];\nconst startHour = 8;\nconst endHour = 20;\n\nfor (let i = 0; i < likesCount; i++) {\n  const randomHour = Math.floor(Math.random() * (endHour - startHour)) + startHour;\n  const randomMinute = Math.floor(Math.random() * 60);\n  const scheduledTime = new Date();\n  scheduledTime.setHours(randomHour, randomMinute, 0, 0);\n  \n  actions.push({\n    prospect_id: warmupSchedule.prospect_id,\n    user_id: warmupSchedule.user_id,\n    action_type: 'like',\n    scheduled_time: scheduledTime.toISOString(),\n    target_post_url: null, // Will be determined by warm-up actions workflow\n    target_author_linkedin_url: null\n  });\n}\n\nfor (let i = 0; i < commentsCount; i++) {\n  const randomHour = Math.floor(Math.random() * (endHour - startHour)) + startHour;\n  const randomMinute = Math.floor(Math.random() * 60);\n  const scheduledTime = new Date();\n  scheduledTime.setHours(randomHour, randomMinute, 0, 0);\n  \n  actions.push({\n    prospect_id: warmupSchedule.prospect_id,\n    user_id: warmupSchedule.user_id,\n    action_type: 'comment',\n    scheduled_time: scheduledTime.toISOString(),\n    target_post_url: null,\n    target_author_linkedin_url: null,\n    comment_text: ['Great insights!', 'Thanks for sharing', 'Very interesting perspective'][Math.floor(Math.random() * 3)]\n  });\n}\n\nreturn actions.map(action => ({ json: action }));"
+      },
+      "name": "Calculate Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "calculate-actions"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.N8N_WEBHOOK_URL || $env.WEBHOOK_URL }}/webhook/warmup/action",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Trigger Warm-up Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300],
+      "id": "trigger-warmup-action"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE linkedin_warmup_schedule SET actions_today = actions_today + 1, last_action_at = NOW() WHERE prospect_id = $1 AND user_id = $2",
+        "options": {
+          "queryParameters": "={{ [$json.prospect_id, $json.user_id] }}"
+        }
+      },
+      "name": "Update Schedule",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1250, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-credentials",
+          "name": "Supabase Postgres"
+        }
+      },
+      "id": "update-schedule"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Warm-ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Warm-ups": {
+      "main": [
+        [
+          {
+            "node": "Get User Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Config": {
+      "main": [
+        [
+          {
+            "node": "Calculate Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Actions": {
+      "main": [
+        [
+          {
+            "node": "Trigger Warm-up Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Warm-up Action": {
+      "main": [
+        [
+          {
+            "node": "Update Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-12T00:00:00.000Z",
+  "versionId": "1"
+}
+
