@@ -143,4 +143,71 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
       return reply.status(204).send();
     }
   );
+
+  // Manual trigger for prospect detection
+  fastify.post(
+    '/trigger-detection',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const userId = req.user.userId;
+      const { Redis } = await import('@upstash/redis');
+
+      // Rate limiting: max 1 manual trigger per day
+      const redisUrl = process.env.UPSTASH_REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+      const redisToken = process.env.UPSTASH_REDIS_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+      if (redisUrl && redisToken) {
+        const redis = new Redis({ url: redisUrl, token: redisToken });
+        const today = new Date().toISOString().split('T')[0];
+        const cacheKey = `manual_detection:${userId}:${today}`;
+
+        const existing = await redis.get(cacheKey);
+        if (existing) {
+          return reply.status(429).send({
+            success: false,
+            error: 'RATE_LIMIT_EXCEEDED',
+            message: 'Only 1 manual trigger per day allowed',
+          });
+        }
+
+        // Set counter for 24 hours
+        await redis.set(cacheKey, '1', { ex: 86400 });
+      }
+
+      // Trigger N8N workflow
+      const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.srv997159.hstgr.cloud/webhook';
+      const webhookUrl = `${n8nWebhookUrl}/daily-detection/manual`;
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN || ''}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            triggered_by: 'manual',
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`N8N webhook failed: ${response.statusText}`);
+        }
+
+        return reply.send({
+          success: true,
+          message: 'Detection triggered successfully',
+        });
+      } catch (error) {
+        fastify.log.error('Failed to trigger detection:', error);
+        return reply.status(500).send({
+          success: false,
+          error: 'Failed to trigger detection',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+  );
 }

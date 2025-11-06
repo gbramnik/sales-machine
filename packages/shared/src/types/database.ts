@@ -22,6 +22,10 @@ export type Database = {
           daily_likes_limit: number | null;
           daily_comments_limit: number | null;
           account_type: 'basic' | 'sales_navigator' | null;
+          detection_mode: 'autopilot' | 'semi_auto' | null;
+          daily_prospect_count: number | null;
+          detection_time: string | null;
+          ai_confidence_threshold: number | null;
           created_at: string;
           updated_at: string;
           last_login_at: string | null;
@@ -700,6 +704,35 @@ export type Database = {
           reply_rate: number;
           meeting_rate: number;
         }>;
+      };
+    };
+    prospect_validation_queue: {
+      Row: {
+        id: string;
+        prospect_id: string;
+        user_id: string;
+        status: 'pending' | 'approved' | 'rejected';
+        created_at: string;
+        validated_at: string | null;
+        validated_by: string | null;
+      };
+      Insert: {
+        id?: string;
+        prospect_id: string;
+        user_id: string;
+        status?: 'pending' | 'approved' | 'rejected';
+        created_at?: string;
+        validated_at?: string | null;
+        validated_by?: string | null;
+      };
+      Update: {
+        id?: string;
+        prospect_id?: string;
+        user_id?: string;
+        status?: 'pending' | 'approved' | 'rejected';
+        created_at?: string;
+        validated_at?: string | null;
+        validated_by?: string | null;
       };
     };
   };

@@ -121,7 +121,29 @@ export async function aiReviewQueueRoutes(fastify: FastifyInstance) {
 
       return reply.send({
         success: true,
-        message: `${body.review_ids.length} messages approved`,
+        message: `${body.review_ids.length} messages approved and sent`,
+      });
+    }
+  );
+
+  // Bulk reject
+  fastify.post(
+    '/bulk-reject',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const reviewService = new AIReviewService(supabase);
+
+      const body = request.body as { review_ids: string[]; reason?: string };
+
+      await reviewService.bulkReject(req.user.userId, body.review_ids, body.reason);
+
+      return reply.send({
+        success: true,
+        message: `${body.review_ids.length} messages rejected`,
       });
     }
   );

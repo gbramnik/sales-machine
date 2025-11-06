@@ -1,0 +1,176 @@
+{
+  "name": "Review Queue Notifier",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger (Every 6 Hours)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT user_id, COUNT(*) as count FROM public.ai_review_queue WHERE status = 'pending' GROUP BY user_id"
+      },
+      "name": "Get Users with Pending Reviews",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "get-users"
+    },
+    {
+      "parameters": {
+        "mode": "splitInBatches",
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "split-users"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as urgent_count FROM public.ai_review_queue WHERE user_id = $1 AND status = 'pending' AND (requires_immediate_attention = TRUE OR ai_confidence_score < 60)",
+        "options": {
+          "queryParameters": "={{ [$json.user_id] }}"
+        }
+      },
+      "name": "Check Urgent Reviews",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "check-urgent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine if urgent\nconst userData = $json('Get Users with Pending Reviews');\nconst urgentData = $json('Check Urgent Reviews');\nconst urgentCount = urgentData[0]?.urgent_count || 0;\nconst isUrgent = urgentCount > 0;\n\nreturn {\n  json: {\n    user_id: userData.user_id,\n    count: userData.count,\n    urgent: isUrgent\n  }\n};"
+      },
+      "name": "Prepare Notification Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "prepare-notification"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/notifications/pending-reviews",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, count: $json.count, urgent: $json.urgent }) }}",
+        "options": {}
+      },
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "id": "send-notification"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 6 Hours)": {
+      "main": [
+        [
+          {
+            "node": "Get Users with Pending Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Users with Pending Reviews": {
+      "main": [
+        [
+          {
+            "node": "Split Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Users": {
+      "main": [
+        [
+          {
+            "node": "Check Urgent Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Urgent Reviews": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notification Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notification Data": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "review-queue-notifier",
+  "meta": {
+    "instanceId": "n8n-cloud"
+  }
+}
+

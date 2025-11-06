@@ -127,13 +127,45 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse Claude API response\nconst response = $json('Call Claude API (via API)');\nconst qualificationResult = response.data || response;\n\n// Validate response structure\nconst result = {\n  qualification_status: qualificationResult.qualification_status || 'needs_more_info',\n  proposed_response_template_id: qualificationResult.proposed_response_template_id || null,\n  proposed_channel: qualificationResult.proposed_channel || $json('Build Context').channel,\n  confidence_score: qualificationResult.confidence_score || 0,\n  reasoning: qualificationResult.reasoning || 'No reasoning provided'\n};\n\n// Merge with context\nreturn {\n  json: {\n    ...$json('Build Context'),\n    qualification_result: result\n  }\n};"
+        "jsCode": "// Parse Claude API response\nconst response = $json('Call Claude API (via API)');\nconst qualificationResult = response.data || response;\n\n// Validate confidence_score (must be integer 0-100)\nlet confidenceScore = qualificationResult.confidence_score || 0;\nif (typeof confidenceScore !== 'number' || confidenceScore < 0 || confidenceScore > 100) {\n  confidenceScore = 50; // Fallback to 50 if invalid\n}\nconfidenceScore = Math.round(confidenceScore);\n\n// Extract confidence_reasoning\nconst confidenceReasoning = qualificationResult.confidence_reasoning || qualificationResult.reasoning || 'No reasoning provided';\n\n// Validate response structure\nconst result = {\n  qualification_status: qualificationResult.qualification_status || 'needs_more_info',\n  proposed_response_template_id: qualificationResult.proposed_response_template_id || null,\n  proposed_channel: qualificationResult.proposed_channel || $json('Build Context').channel,\n  confidence_score: confidenceScore,\n  confidence_reasoning: confidenceReasoning,\n  reasoning: qualificationResult.reasoning || 'No reasoning provided'\n};\n\n// Merge with context\nreturn {\n  json: {\n    ...$json('Build Context'),\n    qualification_result: result\n  }\n};"
       },
       "name": "Parse Claude Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1850, 300],
       "id": "parse-claude"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/confidence/threshold?user_id=${$json.user_id}` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get User Confidence Threshold",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2050, 300],
+      "id": "get-threshold"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge threshold with context\nconst threshold = $json('Get User Confidence Threshold').data?.threshold || 80;\nreturn {\n  json: {\n    ...$json('Parse Claude Response'),\n    user_confidence_threshold: threshold\n  }\n};"
+      },
+      "name": "Merge Threshold",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2250, 300],
+      "id": "merge-threshold"
     },
     {
       "parameters": {
@@ -156,7 +188,7 @@
             {
               "id": "check-confidence",
               "leftValue": "={{ $json.qualification_result.confidence_score }}",
-              "rightValue": 80,
+              "rightValue": "={{ $json.user_confidence_threshold || 80 }}",
               "operator": {
                 "type": "number",
                 "operation": "largerEqual"
@@ -213,7 +245,7 @@
             {
               "id": "check-confidence-low",
               "leftValue": "={{ $json.qualification_result.confidence_score }}",
-              "rightValue": 80,
+              "rightValue": "={{ $json.user_confidence_threshold || 80 }}",
               "operator": {
                 "type": "number",
                 "operation": "smaller"
@@ -242,7 +274,11 @@
             "proposed_subject": "={{ $json.qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
             "proposed_message": "={{ $json('Parse Claude Response').qualification_result.reasoning }}",
             "ai_confidence_score": "={{ $json.qualification_result.confidence_score }}",
-            "ai_reasoning": "={{ $json.qualification_result.reasoning }}",
+            "ai_reasoning": "={{ $json.qualification_result.confidence_reasoning || $json.qualification_result.reasoning }}",
+            "enrichment_data_used": "={{ JSON.stringify($json.enrichment || {}) }}",
+            "template_id": "={{ $json.qualification_result.proposed_response_template_id }}",
+            "priority": "={{ $json.qualification_result.confidence_score < 60 ? 10 : ($json.qualification_result.confidence_score < 70 ? 5 : 1) }}",
+            "requires_immediate_attention": "={{ $json.qualification_result.confidence_score < 60 }}",
             "status": "={{ 'pending' }}"
           }
         }
@@ -398,6 +434,28 @@
       ]
     },
     "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Get User Confidence Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Confidence Threshold": {
+      "main": [
+        [
+          {
+            "node": "Merge Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Threshold": {
       "main": [
         [
           {

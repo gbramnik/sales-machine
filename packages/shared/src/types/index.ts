@@ -57,3 +57,21 @@ export type {
   ScrapingExecutionMetrics,
   ScrapingRateLimitInfo,
 } from './scraping';
+
+// Prospect Detection types
+export type {
+  DetectionMode,
+  DetectionSettings,
+  ProspectValidationQueueItem,
+  ExclusionResult,
+  DailyDetectionResult,
+} from './prospect-detection';
+
+// Confidence Scoring types
+export type {
+  ConfidenceScore,
+  ConfidenceReasoning,
+  ConfidenceDistribution,
+  ReviewMetrics,
+  ConfidenceAnalytics,
+} from './confidence';

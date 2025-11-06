@@ -1,0 +1,519 @@
+{
+  "name": "Daily Prospect Detection",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger (6 AM Daily)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, detection_mode, daily_prospect_count, detection_time, icp_criteria, onboarding_completed FROM public.users WHERE onboarding_completed = TRUE"
+      },
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "get-active-users"
+    },
+    {
+      "parameters": {
+        "mode": "splitInBatches",
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "split-users"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse ICP criteria and prepare UniPil search parameters\nconst user = $json;\nconst icpCriteria = user.icp_criteria || {};\n\n// Map ICP criteria to UniPil format\nconst searchParams = {\n  industry: icpCriteria.industries || icpCriteria.industry || [],\n  job_titles: icpCriteria.job_titles || [],\n  company_size: icpCriteria.company_sizes?.[0] || icpCriteria.company_size || '',\n  location: icpCriteria.locations?.[0] || icpCriteria.location || '',\n  limit: user.daily_prospect_count || 20\n};\n\n// Ensure limit doesn't exceed 40\nif (searchParams.limit > 40) {\n  searchParams.limit = 40;\n}\n\nreturn {\n  json: {\n    user_id: user.id,\n    detection_mode: user.detection_mode || 'autopilot',\n    daily_prospect_count: searchParams.limit,\n    search_params: searchParams,\n    icp_criteria: icpCriteria\n  }\n};"
+      },
+      "name": "Prepare Search Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "prepare-search"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/exclusion/excluded-urls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id }) }}",
+        "options": {}
+      },
+      "name": "Get Excluded URLs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300],
+      "id": "get-excluded"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.UNIPIL_API_URL || 'https://api.unipil.io'}/api/v1/linkedin/search` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.search_params) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "UniPil Profile Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 300],
+      "id": "unipil-search"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out excluded prospects and map to prospect format\nconst unipilResponse = $json.data || $json.profiles || $json.output || [];\nconst excludedUrls = $('Get Excluded URLs').item.json.excluded_urls || [];\nconst userData = $('Prepare Search Parameters').item.json;\n\nconst filtered = [];\n\nfor (const profile of unipilResponse) {\n  // Extract LinkedIn URL\n  const linkedinUrl = profile.linkedin_url || profile.profileUrl || profile.linkedinUrl || '';\n  \n  // Skip if excluded\n  if (excludedUrls.includes(linkedinUrl)) {\n    continue;\n  }\n  \n  // Map to prospect format\n  const fullName = profile.full_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim();\n  const company = profile.company_name || profile.company || '';\n  const jobTitle = profile.job_title || profile.headline || '';\n  \n  // Validate required fields\n  if (!fullName || !company || !jobTitle) {\n    continue;\n  }\n  \n  filtered.push({\n    full_name: fullName,\n    company_name: company,\n    job_title: jobTitle,\n    linkedin_url: linkedinUrl,\n    location: profile.location || '',\n    profile_summary: profile.profile_summary || profile.summary || profile.bio || '',\n    email: profile.email || null,\n    phone: profile.phone || null\n  });\n  \n  // Limit to daily_prospect_count\n  if (filtered.length >= userData.daily_prospect_count) {\n    break;\n  }\n}\n\nreturn {\n  json: {\n    user_id: userData.user_id,\n    detection_mode: userData.detection_mode,\n    prospects: filtered,\n    total_detected: filtered.length\n  }\n};"
+      },
+      "name": "Filter & Map Prospects",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "id": "filter-prospects"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-mode",
+              "leftValue": "={{ $json.detection_mode }}",
+              "rightValue": "autopilot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Autopilot Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1650, 300],
+      "id": "check-mode"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.prospects.map(p => `\n  INSERT INTO public.prospects (\n    user_id, full_name, company_name, job_title,\n    linkedin_url, location, profile_summary, email, phone, status, source\n  ) VALUES (\n    '{{ $json.user_id }}'::uuid,\n    '${p.full_name.replace(/'/g, \"''\")}',\n    '${p.company_name.replace(/'/g, \"''\")}',\n    '${p.job_title.replace(/'/g, \"''\")}',\n    '${(p.linkedin_url || '').replace(/'/g, \"''\")}',\n    '${(p.location || '').replace(/'/g, \"''\")}',\n    '${(p.profile_summary || '').replace(/'/g, \"''\")}',\n    ${p.email ? `'${p.email.replace(/'/g, \"''\")}'` : 'NULL'},\n    ${p.phone ? `'${p.phone.replace(/'/g, \"''\")}'` : 'NULL'},\n    'new',\n    'daily_detection'\n  )\n  ON CONFLICT (linkedin_url) DO NOTHING\n  RETURNING id, user_id\n`).join(';') }}"
+      },
+      "name": "Store Prospects (Autopilot)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "store-autopilot"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.prospects.map(p => `\n  INSERT INTO public.prospects (\n    user_id, full_name, company_name, job_title,\n    linkedin_url, location, profile_summary, email, phone, status, source\n  ) VALUES (\n    '{{ $json.user_id }}'::uuid,\n    '${p.full_name.replace(/'/g, \"''\")}',\n    '${p.company_name.replace(/'/g, \"''\")}',\n    '${p.job_title.replace(/'/g, \"''\")}',\n    '${(p.linkedin_url || '').replace(/'/g, \"''\")}',\n    '${(p.location || '').replace(/'/g, \"''\")}',\n    '${(p.profile_summary || '').replace(/'/g, \"''\")}',\n    ${p.email ? `'${p.email.replace(/'/g, \"''\")}'` : 'NULL'},\n    ${p.phone ? `'${p.phone.replace(/'/g, \"''\")}'` : 'NULL'},\n    'pending_validation',\n    'daily_detection'\n  )\n  ON CONFLICT (linkedin_url) DO NOTHING\n  RETURNING id, user_id\n`).join(';') }}"
+      },
+      "name": "Store Prospects (Semi-Auto)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1850, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "store-semi-auto"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract prospect IDs from stored prospects\nconst storedProspects = $input.all();\nconst prospectIds = [];\n\nfor (const item of storedProspects) {\n  const results = Array.isArray(item.json) ? item.json : [item.json];\n  for (const result of results) {\n    if (result.id && result.user_id) {\n      prospectIds.push({\n        prospect_id: result.id,\n        user_id: result.user_id\n      });\n    }\n  }\n}\n\nreturn prospectIds.map(p => ({ json: p }));"
+      },
+      "name": "Extract Prospect IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 300],
+      "id": "extract-ids"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-mode-2",
+              "leftValue": "={{ $('Filter & Map Prospects').item.json.detection_mode }}",
+              "rightValue": "autopilot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Start Warm-up?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2250, 300],
+      "id": "check-warmup"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/warmup/start/{{ $json.prospect_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id }) }}",
+        "options": {}
+      },
+      "name": "Start Warm-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2450, 200],
+      "id": "start-warmup"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $('Extract Prospect IDs').all().map(item => {\n  const prospectId = item.json.prospect_id;\n  const userId = item.json.user_id;\n  return `INSERT INTO prospect_validation_queue (prospect_id, user_id, status)\n  VALUES ('${prospectId}'::uuid, '${userId}'::uuid, 'pending')\n  ON CONFLICT (prospect_id, user_id) DO NOTHING`;\n}).join(';') }}"
+      },
+      "name": "Add to Validation Queue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2450, 400],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "add-to-queue"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_GATEWAY_URL || 'http://localhost:3000' }}/api/notifications/daily-prospects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $('Filter & Map Prospects').item.json.user_id,\n  prospect_count: $('Filter & Map Prospects').item.json.total_detected,\n  prospect_list: $('Filter & Map Prospects').item.json.prospects.slice(0, 10),\n  mode: $('Filter & Map Prospects').item.json.detection_mode\n}) }}",
+        "options": {}
+      },
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2650, 300],
+      "id": "send-notification"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.audit_log (user_id, event_type, entity_type, new_values)\nVALUES (\n  $1::uuid,\n  'daily_detection_completed',\n  'user',\n  $2::jsonb\n)",
+        "options": {
+          "queryParameters": "={{ [\n  $('Filter & Map Prospects').item.json.user_id,\n  JSON.stringify({\n    detection_mode: $('Filter & Map Prospects').item.json.detection_mode,\n    prospects_detected: $('Filter & Map Prospects').item.json.total_detected,\n    execution_time: new Date().toISOString()\n  })\n] }}"
+        }
+      },
+      "name": "Log Detection",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "log-detection"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (6 AM Daily)": {
+      "main": [
+        [
+          {
+            "node": "Get Active Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Users": {
+      "main": [
+        [
+          {
+            "node": "Split Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Users": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search Parameters": {
+      "main": [
+        [
+          {
+            "node": "Get Excluded URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Excluded URLs": {
+      "main": [
+        [
+          {
+            "node": "UniPil Profile Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UniPil Profile Search": {
+      "main": [
+        [
+          {
+            "node": "Filter & Map Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Map Prospects": {
+      "main": [
+        [
+          {
+            "node": "Autopilot Mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autopilot Mode?": {
+      "main": [
+        [
+          {
+            "node": "Store Prospects (Autopilot)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store Prospects (Semi-Auto)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Prospects (Autopilot)": {
+      "main": [
+        [
+          {
+            "node": "Extract Prospect IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Prospects (Semi-Auto)": {
+      "main": [
+        [
+          {
+            "node": "Extract Prospect IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Prospect IDs": {
+      "main": [
+        [
+          {
+            "node": "Start Warm-up?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Warm-up?": {
+      "main": [
+        [
+          {
+            "node": "Start Warm-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add to Validation Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Warm-up": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Validation Queue": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Notification": {
+      "main": [
+        [
+          {
+            "node": "Log Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "daily-prospect-detection",
+  "meta": {
+    "instanceId": "n8n-cloud"
+  }
+}
+

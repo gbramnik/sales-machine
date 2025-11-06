@@ -20,6 +20,10 @@ import { aiQualificationRoutes } from './routes/ai-qualification';
 import { linkedinRoutes } from './routes/linkedin';
 import { metricsRoutes } from './routes/metrics';
 import { warmupRoutes } from './routes/warmup';
+import { validationQueueRoutes } from './routes/validation-queue';
+import { exclusionRoutes } from './routes/exclusion';
+import { notificationRoutes } from './routes/notifications';
+import { confidenceRoutes } from './routes/confidence';
 
 const server = Fastify({
   logger: {
@@ -79,6 +83,10 @@ await server.register(onboardingRoutes, { prefix: '/onboarding' });
   await server.register(linkedinRoutes, { prefix: '/api' });
   await server.register(metricsRoutes, { prefix: '/api' });
   await server.register(warmupRoutes, { prefix: '/warmup' });
+  await server.register(validationQueueRoutes, { prefix: '/api' });
+  await server.register(exclusionRoutes);
+  await server.register(notificationRoutes);
+  await server.register(confidenceRoutes);
 
 // Error handlers
 server.setErrorHandler(errorHandler);

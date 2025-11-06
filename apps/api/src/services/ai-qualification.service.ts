@@ -45,6 +45,7 @@ export interface QualificationResult {
   proposed_response_template_id: string;
   proposed_channel: 'linkedin' | 'email';
   confidence_score: number; // 0-100
+  confidence_reasoning?: string; // Optional for backward compatibility
   reasoning: string;
 }
 
@@ -85,12 +86,19 @@ export class AIQualificationService {
       // Build system prompt
       const systemPrompt = `You are a B2B sales assistant specializing in lead qualification using BANT framework (Budget, Authority, Need, Timeline) and multi-channel communication (LinkedIn and Email). Your goal is to qualify leads and maintain professional, personalized conversations across channels.
 
+You must return a confidence_score (0-100 integer) for your response. Confidence should be calculated based on three factors:
+(1) Context completeness (0-40 points): Do you have enough information about the prospect? Check: enrichment data exists (+10), talking_points available (+10), company_data available (+10), conversation history exists (+10).
+(2) Fact verifiability (0-40 points): Can all claims in your response be verified from enrichment data? All claims verifiable (+40), some verifiable (+20), none verifiable (+0).
+(3) Tone appropriateness (0-20 points): Is the tone appropriate for the channel (LinkedIn vs Email) and prospect persona? Perfect match (+20), partial match (+10), no match (+0).
+Total confidence_score = sum of all three factors (0-100).
+
 Return ONLY valid JSON with no additional text or markdown formatting. The JSON must match this exact structure:
 {
   "qualification_status": "qualified" | "not_qualified" | "needs_more_info",
   "proposed_response_template_id": "uuid-string",
   "proposed_channel": "linkedin" | "email",
   "confidence_score": 0-100,
+  "confidence_reasoning": "string explaining confidence calculation for each factor",
   "reasoning": "string explaining your decision"
 }`;
 
@@ -202,6 +210,9 @@ Return ONLY valid JSON with no additional text or markdown formatting. The JSON 
     // Add template selection guidance
     prompt += `**Available Templates:**\nYou need to select a template ID from the available templates. The template should match the channel (${channel}) and use case (follow_up_engaged, re_engagement, or custom).\n\n`;
 
+    // Add confidence evaluation instruction
+    prompt += `**Confidence Evaluation:**\nAfter generating your response, evaluate your confidence_score (0-100) using the three-factor method described in the system prompt. Provide confidence_reasoning explaining your score calculation for each factor (context completeness, fact verifiability, tone appropriateness).\n\n`;
+
     prompt += `Return JSON ONLY with no additional text:`;
 
     return prompt;
@@ -241,8 +252,16 @@ Return ONLY valid JSON with no additional text or markdown formatting. The JSON 
         parsed.proposed_channel = context.channel;
       }
 
-      if (typeof parsed.confidence_score !== 'number' || parsed.confidence_score < 0 || parsed.confidence_score > 100) {
-        parsed.confidence_score = 50; // Default confidence
+      // Extract confidence_reasoning
+      const confidenceReasoning = parsed.confidence_reasoning || parsed.reasoning || 'No confidence reasoning provided';
+
+      // Validate or calculate confidence_score
+      let confidenceScore: number;
+      if (typeof parsed.confidence_score === 'number' && parsed.confidence_score >= 0 && parsed.confidence_score <= 100) {
+        confidenceScore = Math.round(parsed.confidence_score);
+      } else {
+        // Fallback: Calculate confidence score using Task 1 logic
+        confidenceScore = this.calculateFallbackConfidence(context);
       }
 
       if (!parsed.proposed_response_template_id) {
@@ -258,7 +277,8 @@ Return ONLY valid JSON with no additional text or markdown formatting. The JSON 
         qualification_status: parsed.qualification_status as 'qualified' | 'not_qualified' | 'needs_more_info',
         proposed_response_template_id: parsed.proposed_response_template_id,
         proposed_channel: parsed.proposed_channel as 'linkedin' | 'email',
-        confidence_score: parsed.confidence_score,
+        confidence_score: confidenceScore,
+        confidence_reasoning: confidenceReasoning,
         reasoning: parsed.reasoning,
       };
     } catch (error) {

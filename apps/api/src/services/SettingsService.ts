@@ -381,10 +381,19 @@ export class SettingsService {
 
     // Parse JSONB field and return with defaults
     const settings = (data?.ai_settings as AISettingsData) || {};
+    // Get confidence_threshold from dedicated field (ai_confidence_threshold) or fallback to ai_settings
+    const { data: userData } = await supabase
+      .from('users')
+      .select('ai_confidence_threshold')
+      .eq('id', userId)
+      .single();
+    
+    const confidenceThreshold = userData?.ai_confidence_threshold ?? settings.confidence_threshold ?? 80;
+    
     return {
       personality_id: settings.personality_id || null,
       tone: settings.tone || 'professional',
-      confidence_threshold: settings.confidence_threshold || 80,
+      confidence_threshold: confidenceThreshold,
       use_vip_mode: settings.use_vip_mode ?? true,
       response_templates: settings.response_templates || [],
     };
@@ -394,13 +403,28 @@ export class SettingsService {
    * Save AI settings
    */
   async saveAISettings(userId: string, data: AISettingsData) {
-    // Store in ai_settings JSONB field in users table
+    // Extract confidence_threshold if provided (store in dedicated field)
+    const confidenceThreshold = data.confidence_threshold;
+    const settingsWithoutThreshold = { ...data };
+    delete (settingsWithoutThreshold as any).confidence_threshold;
+
+    // Store in ai_settings JSONB field (without confidence_threshold)
+    const updateData: any = {
+      ai_settings: settingsWithoutThreshold as any,
+      updated_at: new Date().toISOString(),
+    };
+
+    // If confidence_threshold provided, store in dedicated field
+    if (confidenceThreshold !== undefined) {
+      if (confidenceThreshold < 60 || confidenceThreshold > 95) {
+        throw new Error('confidence_threshold must be between 60 and 95');
+      }
+      updateData.ai_confidence_threshold = confidenceThreshold;
+    }
+
     const { error } = await supabase
       .from('users')
-      .update({
-        ai_settings: data as any,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', userId);
 
     if (error) {
@@ -408,6 +432,128 @@ export class SettingsService {
     }
 
     return data;
+  }
+
+  /**
+   * Get AI confidence threshold
+   */
+  async getAIConfidenceThreshold(userId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('ai_confidence_threshold')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to get AI confidence threshold: ${error.message}`);
+    }
+
+    const threshold = data?.ai_confidence_threshold;
+    if (threshold === null || threshold === undefined) {
+      return 80; // Default threshold
+    }
+
+    // Validate threshold is in valid range (60-95)
+    if (threshold < 60 || threshold > 95) {
+      return 80; // Default if invalid
+    }
+
+    return threshold;
+  }
+
+  /**
+   * Save AI confidence threshold
+   */
+  async saveAIConfidenceThreshold(userId: string, threshold: number): Promise<{ threshold: number }> {
+    // Validate threshold range
+    if (threshold < 60 || threshold > 95) {
+      throw new Error('AI confidence threshold must be between 60 and 95');
+    }
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        ai_confidence_threshold: threshold,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      throw new Error(`Failed to save AI confidence threshold: ${error.message}`);
+    }
+
+    return { threshold };
+  }
+
+  /**
+   * Get detection settings
+   */
+  async getDetectionSettings(userId: string) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('detection_mode, daily_prospect_count, detection_time')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to get detection settings: ${error.message}`);
+    }
+
+    return {
+      detection_mode: data?.detection_mode || 'autopilot',
+      daily_prospect_count: data?.daily_prospect_count || 20,
+      detection_time: data?.detection_time || '06:00',
+    };
+  }
+
+  /**
+   * Save detection settings
+   */
+  async saveDetectionSettings(
+    userId: string,
+    data: {
+      detection_mode?: 'autopilot' | 'semi_auto';
+      daily_prospect_count?: number;
+      detection_time?: string;
+    }
+  ) {
+    // Validate daily_prospect_count
+    if (data.daily_prospect_count !== undefined) {
+      if (data.daily_prospect_count < 1 || data.daily_prospect_count > 40) {
+        throw new Error('daily_prospect_count must be between 1 and 40');
+      }
+    }
+
+    // Validate detection_time format (HH:MM)
+    if (data.detection_time !== undefined) {
+      const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      if (!timeRegex.test(data.detection_time)) {
+        throw new Error('detection_time must be in HH:MM format (24-hour)');
+      }
+    }
+
+    const updateData: any = {};
+    if (data.detection_mode !== undefined) updateData.detection_mode = data.detection_mode;
+    if (data.daily_prospect_count !== undefined) updateData.daily_prospect_count = data.daily_prospect_count;
+    if (data.detection_time !== undefined) updateData.detection_time = data.detection_time;
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        ...updateData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      throw new Error(`Failed to save detection settings: ${error.message}`);
+    }
+
+    return {
+      detection_mode: updateData.detection_mode || 'autopilot',
+      daily_prospect_count: updateData.daily_prospect_count || 20,
+      detection_time: updateData.detection_time || '06:00',
+    };
   }
 }
 

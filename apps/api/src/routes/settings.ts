@@ -46,7 +46,7 @@ const saveEmailSettingsSchema = z.object({
 const saveAISettingsSchema = z.object({
   personality_id: z.string().uuid().optional(),
   tone: z.enum(['professional', 'casual', 'friendly', 'formal']).optional(),
-  confidence_threshold: z.number().min(0).max(100).default(80),
+  confidence_threshold: z.number().min(60).max(95).default(80), // AC requirement: 60-95 range
   use_vip_mode: z.boolean().default(true),
   response_templates: z.array(z.string()).optional(),
 });
@@ -215,9 +215,69 @@ export async function settingsRoutes(server: FastifyInstance) {
     const userId = getUserId(request);
     const data = saveAISettingsSchema.parse(request.body);
 
+    // Validate confidence_threshold range
+    if (data.confidence_threshold !== undefined && (data.confidence_threshold < 60 || data.confidence_threshold > 95)) {
+      return reply.status(400).send({
+        success: false,
+        error: 'confidence_threshold must be between 60 and 95',
+      });
+    }
+
     const settings = await settingsService.saveAISettings(userId, data);
 
     return reply.send(settings);
+  });
+
+  // Get detection settings
+  server.get('/detection', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const userId = getUserId(request);
+
+    try {
+      const settings = await settingsService.getDetectionSettings(userId);
+      return reply.send({
+        success: true,
+        data: settings,
+      });
+    } catch (error) {
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to get detection settings',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Save detection settings
+  const saveDetectionSettingsSchema = z.object({
+    detection_mode: z.enum(['autopilot', 'semi_auto']).optional(),
+    daily_prospect_count: z.number().int().min(1).max(40).optional(),
+    detection_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
+  });
+
+  server.post('/detection', {
+    preHandler: requireAuth,
+    schema: {
+      body: saveDetectionSettingsSchema,
+    },
+  }, async (request, reply) => {
+    const userId = getUserId(request);
+    const data = saveDetectionSettingsSchema.parse(request.body);
+
+    try {
+      const settings = await settingsService.saveDetectionSettings(userId, data);
+      return reply.send({
+        success: true,
+        data: settings,
+      });
+    } catch (error) {
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to save detection settings',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   });
 
   // Get all settings (combined)
@@ -226,11 +286,12 @@ export async function settingsRoutes(server: FastifyInstance) {
   }, async (request, reply) => {
     const userId = getUserId(request);
 
-    const [credentials, icp, email, ai] = await Promise.all([
+    const [credentials, icp, email, ai, detection] = await Promise.all([
       settingsService.getApiCredentials(userId),
       settingsService.getICPConfig(userId),
       settingsService.getEmailSettings(userId),
       settingsService.getAISettings(userId),
+      settingsService.getDetectionSettings(userId).catch(() => null),
     ]);
 
     return reply.send({
@@ -238,6 +299,7 @@ export async function settingsRoutes(server: FastifyInstance) {
       icp,
       email,
       ai,
+      detection,
     });
   });
 }
