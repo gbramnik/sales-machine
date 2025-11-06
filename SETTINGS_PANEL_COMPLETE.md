@@ -137,3 +137,4 @@ Le Settings Panel est fonctionnel et prêt à être connecté au backend une foi
 
 **Prochaine phase :** Phase 1.3 - Connecter Dashboard aux vraies données Supabase + actions CRUD
 
+

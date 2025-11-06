@@ -26,3 +26,4 @@ COMMENT ON COLUMN public.prospects.company_website IS 'Company website URL extra
 COMMENT ON COLUMN public.prospects.company_description IS 'Company description extracted from LinkedIn company page';
 COMMENT ON COLUMN public.prospects.email_confidence_score IS 'Email finder confidence score (0-100) indicating likelihood that found email is correct';
 
+

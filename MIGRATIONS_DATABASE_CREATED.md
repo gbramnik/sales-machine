@@ -146,3 +146,4 @@ supabase db push
 **Document créé:** 11 Janvier 2025  
 **Status:** ✅ Migrations créées, prêt pour tests
 
+

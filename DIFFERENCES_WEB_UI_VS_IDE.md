@@ -296,3 +296,4 @@ BMad Core fonctionne en **2 phases distinctes** avec des environnements optimaux
 **Document créé:** 11 Janvier 2025  
 **Status:** Guide de référence pour choisir Web UI vs IDE
 
+

@@ -86,3 +86,4 @@ export async function aiQualificationRoutes(server: FastifyInstance) {
   );
 }
 
+

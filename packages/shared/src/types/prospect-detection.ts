@@ -44,3 +44,4 @@ export interface DailyDetectionResult {
   execution_time: string;
 }
 
+

@@ -6,3 +6,4 @@ ADD COLUMN IF NOT EXISTS ai_confidence_threshold INTEGER DEFAULT 80 CHECK (ai_co
 
 COMMENT ON COLUMN public.users.ai_confidence_threshold IS 'AI confidence threshold for auto-sending messages (60-95, default 80). Messages below threshold are queued for review.';
 
+

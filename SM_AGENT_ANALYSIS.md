@@ -163,3 +163,4 @@ Je veux implémenter Story 1.2.1: Migration PhantomBuster → UniPil
 **Document créé:** 11 Janvier 2025  
 **Status:** Analyse complète - Choix à faire par utilisateur
 
+

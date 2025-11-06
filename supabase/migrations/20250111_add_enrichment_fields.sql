@@ -23,3 +23,4 @@ WHERE enrichment_source IS NULL;
 COMMENT ON COLUMN public.prospect_enrichment.company_insights IS 'Company-level insights extracted from LinkedIn company page and website scraping';
 COMMENT ON COLUMN public.prospect_enrichment.enrichment_source IS 'Source of enrichment data: linkedin_only, linkedin_company (profile + company), linkedin_company_web (+ web scraping), full (+ email finder)';
 
+

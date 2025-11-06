@@ -48,3 +48,4 @@ COMMENT ON COLUMN public.companies.linkedin_url IS 'LinkedIn company page URL';
 COMMENT ON COLUMN public.companies.website IS 'Company website URL';
 COMMENT ON COLUMN public.companies.scraped_at IS 'Timestamp when company data was last scraped';
 
+

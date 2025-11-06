@@ -47,3 +47,4 @@ CREATE TRIGGER prospect_validation_queue_updated_at
 -- Add comment
 COMMENT ON TABLE public.prospect_validation_queue IS 'Tracks prospects pending user validation in semi-auto mode (Story 1.10)';
 
+

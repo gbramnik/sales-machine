@@ -23,3 +23,4 @@ WHERE channel IS NULL;
 COMMENT ON COLUMN public.email_templates.channel IS 'Channel for template: linkedin (LinkedIn message only), email (email only), both (can be used for both)';
 COMMENT ON COLUMN public.email_templates.linkedin_message_preview IS 'LinkedIn message preview text (max 300 chars for LinkedIn connection requests)';
 
+

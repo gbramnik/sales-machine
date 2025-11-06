@@ -336,3 +336,4 @@ ALTER TABLE prospect_enrichment ADD COLUMN phone_found TEXT;
 
 **Prochaine étape:** Lancer `*correct-course` pour formaliser changement PRD/Architecture
 
+

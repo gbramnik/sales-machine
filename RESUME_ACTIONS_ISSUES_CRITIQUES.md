@@ -171,3 +171,4 @@ La story est dans docs/stories/1.2.1.migration-phantombuster-to-unipil.md
 **Document créé:** 11 Janvier 2025  
 **Status:** ✅ Actions critiques complétées, prêt pour implémentation
 
+

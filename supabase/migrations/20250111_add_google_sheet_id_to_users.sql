@@ -7,3 +7,4 @@ ADD COLUMN IF NOT EXISTS google_sheet_id TEXT;
 -- Add comment
 COMMENT ON COLUMN public.users.google_sheet_id IS 'Google Sheet ID for user metrics dashboard (Story 1.8)';
 
+
