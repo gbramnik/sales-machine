@@ -1,5 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UniPilService, SearchProfilesParams } from '../../../../src/services/UniPilService';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Set environment variables before importing the service
+process.env.UNIPIL_API_URL = 'https://api.unipil.io';
+process.env.UNIPIL_API_KEY = 'test-api-key';
+
+import { UniPilService, SearchProfilesParams } from '../../../src/services/UniPilService';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -8,12 +13,9 @@ describe('UniPilService', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.resetModules();
-    process.env = {
-      ...originalEnv,
-      UNIPIL_API_URL: 'https://api.unipil.io',
-      UNIPIL_API_KEY: 'test-api-key',
-    };
+    // Ensure env vars are set for each test
+    process.env.UNIPIL_API_URL = 'https://api.unipil.io';
+    process.env.UNIPIL_API_KEY = 'test-api-key';
     vi.clearAllMocks();
   });
 
@@ -51,7 +53,7 @@ describe('UniPilService', () => {
 
       expect(result).toEqual(mockProfiles);
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/linkedin/search'),
+        expect.stringContaining('/linkedin/search'),
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
@@ -135,7 +137,7 @@ describe('UniPilService', () => {
 
       expect(result).toEqual(mockCompanyData);
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/linkedin/company'),
+        expect.stringContaining('/linkedin/company'),
         expect.objectContaining({
           method: 'GET',
         })

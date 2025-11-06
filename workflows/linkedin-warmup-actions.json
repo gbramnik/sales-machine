@@ -56,7 +56,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/like",
+        "url": "=https://1api21.unipile.com:15176/api/v1/accounts/linkedin/like",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -64,7 +64,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+              "value": "Bearer kgQvfznd.XKOSD0UGlF5clyJEOB6qpbj0HVuwGAcbIrpErX81sXg="
             },
             {
               "name": "Content-Type",
@@ -87,7 +87,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.UNIPIL_API_URL || 'https://api.unipil.io' }}/api/v1/linkedin/comment",
+        "url": "=https://1api21.unipile.com:15176/api/v1/accounts/linkedin/comment",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -95,7 +95,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.UNIPIL_API_KEY }}"
+              "value": "Bearer kgQvfznd.XKOSD0UGlF5clyJEOB6qpbj0HVuwGAcbIrpErX81sXg="
             },
             {
               "name": "Content-Type",

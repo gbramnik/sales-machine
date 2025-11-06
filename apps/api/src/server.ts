@@ -26,6 +26,8 @@ import { notificationRoutes } from './routes/notifications';
 import { confidenceRoutes } from './routes/confidence';
 import { vipRoutes } from './routes/vip';
 import { factCheckRoutes } from './routes/fact-check';
+import { humannessTestsRoutes } from './routes/humanness-tests';
+import { humannessSurveysRoutes } from './routes/humanness-surveys';
 
 const server = Fastify({
   logger: {
@@ -91,6 +93,8 @@ await server.register(onboardingRoutes, { prefix: '/onboarding' });
   await server.register(confidenceRoutes);
   await server.register(vipRoutes, { prefix: '/api/vip' });
   await server.register(factCheckRoutes, { prefix: '/api/fact-check' });
+  await server.register(humannessTestsRoutes, { prefix: '/api/humanness-tests' });
+  await server.register(humannessSurveysRoutes, { prefix: '/api/humanness-surveys' });
 
 // Error handlers
 server.setErrorHandler(errorHandler);

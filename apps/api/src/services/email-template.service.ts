@@ -83,7 +83,9 @@ export class EmailTemplateService {
     const variablesMissing: string[] = [];
     
     for (const requiredVar of template.variables_required || []) {
-      if (variables[requiredVar] !== undefined && variables[requiredVar] !== null) {
+      const value = variables[requiredVar];
+      // Consider variable missing if undefined, null, or empty string
+      if (value !== undefined && value !== null && value !== '') {
         variablesUsed.push(requiredVar);
       } else {
         variablesMissing.push(requiredVar);

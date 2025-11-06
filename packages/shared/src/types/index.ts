@@ -58,6 +58,23 @@ export type {
   ScrapingRateLimitInfo,
 } from './scraping';
 
+// Prospect Enrichment types (Story 1.3)
+export type {
+  EnrichmentSource,
+  ProspectEnrichmentValidated,
+  ProspectEnrichmentInsertValidated,
+  ProspectEnrichmentUpdateValidated,
+  EnrichmentWorkflowResponse,
+  ManualEnrichmentResponse,
+} from './prospect-enrichment';
+
+export {
+  EnrichmentSourceSchema,
+  ProspectEnrichmentSchema,
+  ProspectEnrichmentInsertSchema,
+  ProspectEnrichmentUpdateSchema,
+} from './prospect-enrichment';
+
 // Prospect Detection types
 export type {
   DetectionMode,
@@ -101,3 +118,28 @@ export type {
   BlacklistWarningInsert,
   BlacklistWarningUpdate,
 } from './fact-check';
+
+// Humanness Testing types (Story 2.4)
+export type {
+  HumannessTest,
+  Panelist,
+  TestMessage,
+  TestResponse,
+  DetectionRateMetrics,
+  WinningStrategy,
+  ResponseRateMetrics,
+  ResponseRateTrend,
+  PostLaunchSurvey,
+} from './humanness';
+
+export {
+  HumannessTestSchema,
+  PanelistSchema,
+  TestMessageSchema,
+  TestResponseSchema,
+  DetectionRateMetricsSchema,
+  WinningStrategySchema,
+  ResponseRateMetricsSchema,
+  ResponseRateTrendSchema,
+  PostLaunchSurveySchema,
+} from './humanness';

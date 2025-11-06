@@ -1,0 +1,216 @@
+{
+  "name": "Humanness Response Rate Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        300
+      ],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id FROM public.users WHERE subscription_status = 'active'"
+      },
+      "name": "Get Active Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        300
+      ],
+      "id": "get-users"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/humanness-tests/response-rate?user_id=${$json.id}&days=30` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "name": "Get Response Rate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        650,
+        300
+      ],
+      "id": "get-rate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-below-threshold",
+              "leftValue": "={{ $json('Get Response Rate').data.response_rate_per_100 }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Below Threshold?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        850,
+        300
+      ],
+      "id": "check-threshold"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "audit_log",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_type": "={{ 'humanness_response_rate_alert' }}",
+            "user_id": "={{ $json('Get Active Users').id }}",
+            "metadata": "={{ JSON.stringify({ response_rate: $json('Get Response Rate').data.response_rate_per_100, threshold: 5, ai_messages_sent: $json('Get Response Rate').data.ai_messages_sent, replies_received: $json('Get Response Rate').data.replies_received }) }}"
+          }
+        }
+      },
+      "name": "Log Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1050,
+        200
+      ],
+      "id": "log-alert"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/email/send` }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ to: $json('Get Active Users').email, subject: 'Response Rate Alert - AI Fatigue Detected', body: `Your response rate has dropped below 5% (currently ${$json('Get Response Rate').data.response_rate_per_100}%). This may indicate AI fatigue. Consider reviewing your message strategy.`, from: 'alerts@no-spray-no-pray.com', prospect_id: $json('Get Active Users').id, template_id: null }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1250,
+        200
+      ],
+      "id": "send-alert"
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Active Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Users": {
+      "main": [
+        [
+          {
+            "node": "Get Response Rate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Response Rate": {
+      "main": [
+        [
+          {
+            "node": "Below Threshold?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Below Threshold?": {
+      "main": [
+        [
+          {
+            "node": "Log Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Log Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-16T12:00:00.000Z",
+  "versionId": "1"
+}
+

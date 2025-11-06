@@ -1,15 +1,35 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TopicBlacklistService } from '../../../src/services/TopicBlacklistService';
 
-// Mock Supabase
+// Mock Supabase - from() returns a chainable query builder
+// The builder is awaitable and resolves with { data, error }
+const createQueryBuilder = (finalData?: any, finalError?: any) => {
+  const builder: any = {
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    delete: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(), // Always returns this for chaining
+    single: vi.fn().mockReturnThis(),
+  };
+  
+  // Make the builder itself awaitable (thenable)
+  builder.then = vi.fn((resolve: any) => {
+    resolve({ data: finalData, error: finalError });
+  });
+  builder.catch = vi.fn();
+  
+  // For single() calls, it should resolve
+  if (finalData !== undefined || finalError !== undefined) {
+    builder.single.mockResolvedValue({ data: finalData, error: finalError });
+  }
+  
+  return builder;
+};
+
 const mockSupabase = {
-  from: vi.fn().mockReturnThis(),
-  select: vi.fn().mockReturnThis(),
-  insert: vi.fn().mockReturnThis(),
-  delete: vi.fn().mockReturnThis(),
-  eq: vi.fn().mockReturnThis(),
-  is: vi.fn().mockReturnThis(),
-  single: vi.fn(),
+  from: vi.fn(() => createQueryBuilder()),
 };
 
 describe('TopicBlacklistService', () => {
@@ -30,18 +50,11 @@ describe('TopicBlacklistService', () => {
         { id: '3', topic_category: 'pricing', blacklisted_phrase: 'custom phrase', regex_pattern: null, severity: 'warning' },
       ];
 
-      const systemQuery = {
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-      };
-      systemQuery.eq.mockResolvedValue({ data: systemPhrases, error: null });
+      // Create chainable mock for system query (last eq() resolves)
+      const systemQuery = createQueryBuilder(systemPhrases, null);
 
-      const userQuery = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-      };
-      userQuery.eq.mockResolvedValue({ data: userPhrases, error: null });
+      // Create chainable mock for user query (last eq() resolves)
+      const userQuery = createQueryBuilder(userPhrases, null);
 
       mockSupabase.from
         .mockReturnValueOnce(systemQuery)
@@ -60,18 +73,8 @@ describe('TopicBlacklistService', () => {
         { id: '1', topic_category: 'pricing', blacklisted_phrase: 'best price', regex_pattern: null, severity: 'block' },
       ];
 
-      const systemQuery = {
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-      };
-      systemQuery.eq.mockResolvedValue({ data: systemPhrases, error: null });
-
-      const userQuery = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-      };
-      userQuery.eq.mockResolvedValue({ data: [], error: null });
+      const systemQuery = createQueryBuilder(systemPhrases, null);
+      const userQuery = createQueryBuilder([], null);
 
       mockSupabase.from
         .mockReturnValueOnce(systemQuery)
@@ -93,11 +96,9 @@ describe('TopicBlacklistService', () => {
         severity: 'block',
       };
 
-      mockSupabase.from.mockReturnValue({
-        insert: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: newPhrase, error: null }),
-      });
+      const insertQuery = createQueryBuilder(newPhrase, null);
+
+      mockSupabase.from.mockReturnValue(insertQuery);
 
       const result = await service.addBlacklistPhrase('user-1', 'pricing', 'special discount', 'block');
 
@@ -107,14 +108,8 @@ describe('TopicBlacklistService', () => {
     });
 
     it('should throw error if phrase already exists', async () => {
-      mockSupabase.from.mockReturnValue({
-        insert: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({
-          data: null,
-          error: { code: '23505', message: 'duplicate key' },
-        }),
-      });
+      const insertQuery = createQueryBuilder(null, { code: '23505', message: 'duplicate key' });
+      mockSupabase.from.mockReturnValue(insertQuery);
 
       await expect(
         service.addBlacklistPhrase('user-1', 'pricing', 'best price', 'block')
@@ -129,18 +124,8 @@ describe('TopicBlacklistService', () => {
         user_id: 'user-1',
       };
 
-      const fetchQuery = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: phrase, error: null }),
-      };
-
-      const deleteQuery = {
-        delete: vi.fn().mockReturnThis(),
-        eq: vi.fn()
-          .mockReturnValueOnce({ eq: vi.fn().mockResolvedValue({ error: null }) })
-          .mockReturnValueOnce({ error: null }),
-      };
+      const fetchQuery = createQueryBuilder(phrase, null);
+      const deleteQuery = createQueryBuilder(undefined, null);
 
       mockSupabase.from
         .mockReturnValueOnce(fetchQuery)
@@ -157,11 +142,8 @@ describe('TopicBlacklistService', () => {
         user_id: 'other-user',
       };
 
-      mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: phrase, error: null }),
-      });
+      const fetchQuery = createQueryBuilder(phrase, null);
+      mockSupabase.from.mockReturnValue(fetchQuery);
 
       await expect(
         service.removeBlacklistPhrase('user-1', 'phrase-id')

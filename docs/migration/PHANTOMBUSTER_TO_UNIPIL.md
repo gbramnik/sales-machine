@@ -1,4 +1,6 @@
-# Migration Guide: PhantomBuster → UniPil API
+# Migration Guide: PhantomBuster → UniPil
+
+> **Note:** For complete UniPil API endpoint reference, see [UNIPIL_API_REFERENCE.md](./UNIPIL_API_REFERENCE.md) API
 
 **Created:** 2025-01-11  
 **Purpose:** Complete migration guide from PhantomBuster to UniPil API for LinkedIn automation  

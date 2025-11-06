@@ -8,8 +8,8 @@ import { ApiError, ErrorCode } from '../types';
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+const getClaudeApiKey = () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+const getClaudeModel = () => process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 
 // Types
 export interface QualificationContext {
@@ -39,6 +39,8 @@ export interface QualificationContext {
   channel: 'email' | 'linkedin';
   sentiment: 'positive' | 'neutral' | 'negative';
 }
+
+export type PromptingStrategy = 'strategy_1' | 'strategy_2' | 'strategy_3' | 'strategy_4' | 'strategy_5' | null;
 
 export interface QualificationResult {
   qualification_status: 'qualified' | 'not_qualified' | 'needs_more_info';
@@ -71,10 +73,15 @@ export class AIQualificationService {
    * Qualify a prospect based on their reply using Claude API
    * 
    * @param context - Prospect context including reply, enrichment, and thread history
+   * @param strategy - Optional prompting strategy for humanness testing
    * @returns Qualification result with status, template ID, channel, confidence, and reasoning
    */
-  async qualifyProspect(context: QualificationContext): Promise<QualificationResult> {
-    if (!CLAUDE_API_KEY) {
+  async qualifyProspect(
+    context: QualificationContext,
+    strategy: PromptingStrategy = null
+  ): Promise<QualificationResult> {
+    const apiKey = getClaudeApiKey();
+    if (!apiKey) {
       throw new ApiError(
         ErrorCode.INVALID_CONFIG,
         'Claude API key not configured',
@@ -83,8 +90,8 @@ export class AIQualificationService {
     }
 
     try {
-      // Build system prompt
-      const systemPrompt = `You are a B2B sales assistant specializing in lead qualification using BANT framework (Budget, Authority, Need, Timeline) and multi-channel communication (LinkedIn and Email). Your goal is to qualify leads and maintain professional, personalized conversations across channels.
+      // Build system prompt with optional strategy modification
+      let systemPrompt = `You are a B2B sales assistant specializing in lead qualification using BANT framework (Budget, Authority, Need, Timeline) and multi-channel communication (LinkedIn and Email). Your goal is to qualify leads and maintain professional, personalized conversations across channels.
 
 CRITICAL RESTRICTIONS - You must NEVER mention or imply:
 1. **Pricing or costs:** Never mention specific prices, discounts, 'best price', 'lowest cost', 'cheapest', 'special offer', or any pricing information. If asked about pricing, redirect to a conversation: "I'd be happy to discuss this in more detail. Would you be open to a brief conversation?"
@@ -96,9 +103,21 @@ You must return a confidence_score (0-100 integer) for your response. Confidence
 (1) Context completeness (0-40 points): Do you have enough information about the prospect? Check: enrichment data exists (+10), talking_points available (+10), company_data available (+10), conversation history exists (+10).
 (2) Fact verifiability (0-40 points): Can all claims in your response be verified from enrichment data? All claims verifiable (+40), some verifiable (+20), none verifiable (+0).
 (3) Tone appropriateness (0-20 points): Is the tone appropriate for the channel (LinkedIn vs Email) and prospect persona? Perfect match (+20), partial match (+10), no match (+0).
-Total confidence_score = sum of all three factors (0-100).
+Total confidence_score = sum of all three factors (0-100).`;
 
-Return ONLY valid JSON with no additional text or markdown formatting. The JSON must match this exact structure:
+      // Add strategy-specific instructions
+      if (strategy) {
+        const strategyInstructions: Record<NonNullable<PromptingStrategy>, string> = {
+          strategy_1: '', // Baseline - no modification
+          strategy_2: "\n\n**WRITING STYLE:** Write as if you're a colleague having a casual conversation. Use contractions (I'm, we'll, don't), natural pauses, and a friendly tone. Be conversational, not formal.",
+          strategy_3: "\n\n**WRITING STYLE:** Write professionally but with warmth. Use 'I' statements instead of 'we' or 'our company'. Show genuine interest, avoid corporate jargon. Be personal and authentic.",
+          strategy_4: "\n\n**WRITING STYLE:** Keep your response message under 3 sentences. Be direct, no fluff. Get to the point quickly. Be concise and clear.",
+          strategy_5: "\n\n**WRITING STYLE:** Start your response with a genuine question about their business. Show curiosity, not a sales pitch. Ask about their challenges or goals.",
+        };
+        systemPrompt += strategyInstructions[strategy];
+      }
+
+      systemPrompt += `\n\nReturn ONLY valid JSON with no additional text or markdown formatting. The JSON must match this exact structure:
 {
   "qualification_status": "qualified" | "not_qualified" | "needs_more_info",
   "proposed_response_template_id": "uuid-string",
@@ -115,12 +134,12 @@ Return ONLY valid JSON with no additional text or markdown formatting. The JSON 
       const response = await fetch(CLAUDE_API_URL, {
         method: 'POST',
         headers: {
-          'x-api-key': CLAUDE_API_KEY,
+          'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: CLAUDE_MODEL,
+          model: getClaudeModel(),
           max_tokens: 1024,
           system: systemPrompt,
           messages: [

@@ -15,8 +15,10 @@ import { ApiError, ErrorCode } from '../types';
  */
 
 // Configuration
-const UNIPIL_API_URL = process.env.UNIPIL_API_URL || 'https://api.unipil.io';
-const UNIPIL_API_KEY = process.env.UNIPIL_API_KEY;
+// Base URL: https://1api21.unipile.com:15176/api/v1/accounts
+// Endpoints are appended: /linkedin/search, /linkedin/company, etc.
+const getUniPilApiUrl = () => process.env.UNIPIL_API_URL || 'https://1api21.unipile.com:15176/api/v1/accounts';
+const getUniPilApiKey = () => process.env.UNIPIL_API_KEY;
 
 // Rate limiting configuration
 const DEFAULT_DAILY_LIMIT = 20;
@@ -95,14 +97,15 @@ export class UniPilService {
    * Get API key from environment or throw error
    */
   private static getApiKey(): string {
-    if (!UNIPIL_API_KEY) {
+    const apiKey = getUniPilApiKey();
+    if (!apiKey) {
       throw new ApiError(
         ErrorCode.INTERNAL_SERVER_ERROR,
         'UniPil API key not configured. Set UNIPIL_API_KEY environment variable.',
         500
       );
     }
-    return UNIPIL_API_KEY;
+    return apiKey;
   }
 
   /**
@@ -113,7 +116,7 @@ export class UniPilService {
     options: RequestInit,
     retryCount = 0
   ): Promise<T> {
-    const url = `${UNIPIL_API_URL}${endpoint}`;
+    const url = `${getUniPilApiUrl()}${endpoint}`;
     const apiKey = this.getApiKey();
 
     const requestOptions: RequestInit = {
@@ -227,7 +230,7 @@ export class UniPilService {
     params: SearchProfilesParams
   ): Promise<UniPilProfile[]> {
     // TODO: Confirm exact endpoint path with UniPil API documentation
-    const endpoint = '/api/v1/linkedin/search';
+    const endpoint = '/linkedin/search';
     
     const response = await this.makeRequest<UniPilResponse<UniPilProfile[]>>(
       endpoint,
@@ -266,7 +269,7 @@ export class UniPilService {
     // TODO: Confirm exact endpoint path with UniPil API documentation
     // Assuming endpoint format: /api/v1/linkedin/company/{companyUrl}
     const encodedUrl = encodeURIComponent(companyLinkedInUrl);
-    const endpoint = `/api/v1/linkedin/company/${encodedUrl}`;
+    const endpoint = `/linkedin/company/${encodedUrl}`;
     
     const response = await this.makeRequest<UniPilResponse<CompanyPageData>>(
       endpoint,
@@ -295,7 +298,7 @@ export class UniPilService {
    */
   static async likePost(postUrl: string): Promise<{ success: boolean }> {
     // TODO: Confirm exact endpoint path with UniPil API documentation
-    const endpoint = '/api/v1/linkedin/like';
+    const endpoint = '/linkedin/like';
     
     const response = await this.makeRequest<UniPilResponse<{ success: boolean }>>(
       endpoint,
@@ -331,7 +334,7 @@ export class UniPilService {
     comment: string
   ): Promise<{ success: boolean }> {
     // TODO: Confirm exact endpoint path with UniPil API documentation
-    const endpoint = '/api/v1/linkedin/comment';
+    const endpoint = '/linkedin/comment';
     
     const response = await this.makeRequest<UniPilResponse<{ success: boolean }>>(
       endpoint,
@@ -368,7 +371,7 @@ export class UniPilService {
     message: string
   ): Promise<{ success: boolean; request_id?: string }> {
     // TODO: Confirm exact endpoint path with UniPil API documentation
-    const endpoint = '/api/v1/linkedin/connection-request';
+    const endpoint = '/linkedin/connection-request';
     
     const response = await this.makeRequest<UniPilResponse<{ success: boolean; request_id?: string }>>(
       endpoint,
@@ -405,7 +408,7 @@ export class UniPilService {
     message: string
   ): Promise<{ success: boolean; message_id?: string }> {
     // TODO: Confirm exact endpoint path with UniPil API documentation
-    const endpoint = '/api/v1/linkedin/message';
+    const endpoint = '/linkedin/message';
     
     const response = await this.makeRequest<UniPilResponse<{ success: boolean; message_id?: string }>>(
       endpoint,

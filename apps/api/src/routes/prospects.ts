@@ -282,4 +282,116 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
       });
     }
   );
+
+  // Manual trigger for prospect enrichment
+  fastify.post(
+    '/:id/enrich',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const prospectService = new ProspectService(supabase);
+
+      const params = request.params as { id: string };
+      const prospectId = params.id;
+      const userId = req.user.userId;
+
+      // Validate prospect exists and belongs to user
+      const prospect = await prospectService.getProspect(userId, prospectId);
+      if (!prospect) {
+        throw new ApiError(
+          ErrorCode.NOT_FOUND,
+          'Prospect not found',
+          404
+        );
+      }
+
+      // Check Redis cache first
+      const { Redis } = await import('@upstash/redis');
+      const redisUrl = process.env.UPSTASH_REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
+      const redisToken = process.env.UPSTASH_REDIS_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+      let cached = false;
+      let enrichmentId: string | null = null;
+
+      if (redisUrl && redisToken) {
+        try {
+          const redis = new Redis({ url: redisUrl, token: redisToken });
+          const cacheKey = `enrichment:${prospectId}`;
+          const cachedData = await redis.get(cacheKey);
+
+          if (cachedData) {
+            // Cache hit - return cached enrichment
+            const enrichmentData = typeof cachedData === 'string' 
+              ? JSON.parse(cachedData) 
+              : cachedData;
+
+            // Check if enrichment exists in database
+            const { data: existingEnrichment } = await supabase
+              .from('prospect_enrichment')
+              .select('id')
+              .eq('prospect_id', prospectId)
+              .eq('user_id', userId)
+              .single();
+
+            enrichmentId = existingEnrichment?.id || null;
+            cached = true;
+
+            return reply.send({
+              success: true,
+              cached: true,
+              enrichment_id: enrichmentId,
+              message: 'Enrichment data retrieved from cache',
+            });
+          }
+        } catch (error) {
+          // Cache check failed - continue to trigger enrichment
+          fastify.log.warn('Redis cache check failed, proceeding with enrichment:', error);
+        }
+      }
+
+      // Cache miss - trigger N8N enrichment workflow
+      const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://n8n.srv997159.hstgr.cloud/webhook';
+      const webhookUrl = `${n8nWebhookUrl}/ai-enrichment`;
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN || ''}`,
+          },
+          body: JSON.stringify({
+            prospect_id: prospectId,
+            user_id: userId,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`N8N webhook failed: ${response.status} ${errorText}`);
+        }
+
+        const webhookResponse = await response.json();
+
+        return reply.send({
+          success: true,
+          cached: false,
+          enrichment_id: webhookResponse.enrichment_id || null,
+          execution_id: webhookResponse.execution_id || null,
+          message: 'Enrichment workflow triggered successfully',
+        });
+      } catch (error) {
+        fastify.log.error('Failed to trigger enrichment:', error);
+        throw new ApiError(
+          ErrorCode.SERVICE_UNAVAILABLE,
+          'Failed to trigger enrichment workflow',
+          500,
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+      }
+    }
+  );
 }

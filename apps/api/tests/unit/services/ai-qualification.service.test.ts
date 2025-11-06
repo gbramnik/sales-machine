@@ -85,6 +85,7 @@ describe('AIQualificationService', () => {
         proposed_response_template_id: '00000000-0000-0000-0000-000000000001',
         proposed_channel: 'email',
         confidence_score: 85,
+        confidence_reasoning: 'Prospect shows clear buying intent',
         reasoning: 'Prospect shows clear buying intent',
       });
 
