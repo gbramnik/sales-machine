@@ -140,6 +140,55 @@ export class EmailTemplateService {
       variables_missing: variablesMissing,
     };
   }
+
+  /**
+   * Get templates for a specific channel, optionally filtered by VIP status
+   * 
+   * @param channel - Channel type ('linkedin' | 'email')
+   * @param userId - User ID
+   * @param isVIP - Optional VIP filter. If true, returns only VIP templates. If false, returns only non-VIP templates. If undefined, returns all templates.
+   * @returns Array of email templates
+   */
+  async getTemplatesForChannel(
+    channel: 'linkedin' | 'email',
+    userId: string,
+    isVIP?: boolean
+  ): Promise<EmailTemplate[]> {
+    let query = supabaseAdmin
+      .from('email_templates')
+      .select('*')
+      .eq('is_active', true)
+      .or(`user_id.eq.${userId},is_system_template.eq.true`)
+      .or(`channel.eq.${channel},channel.eq.both`);
+
+    // Filter by VIP status if specified
+    if (isVIP !== undefined) {
+      if (isVIP) {
+        query = query.eq('is_vip_template', true);
+      } else {
+        query = query.or('is_vip_template.eq.false,is_vip_template.is.null');
+      }
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw new ApiError(
+        ErrorCode.INTERNAL_SERVER_ERROR,
+        'Failed to fetch templates',
+        500,
+        error
+      );
+    }
+
+    // Parse variables_required JSONB for each template
+    return (data || []).map(template => ({
+      ...template,
+      variables_required: Array.isArray(template.variables_required)
+        ? template.variables_required
+        : [],
+    })) as EmailTemplate[];
+  }
   
   /**
    * Get template by ID

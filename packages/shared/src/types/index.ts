@@ -75,3 +75,29 @@ export type {
   ReviewMetrics,
   ConfidenceAnalytics,
 } from './confidence';
+
+// VIP types
+export type {
+  VIPDetectionResult,
+  VIPConversionMetrics,
+  VIPReviewMetrics,
+  ProspectWithVIP,
+  EmailTemplateWithVIP,
+} from './vip';
+
+// Fact-Check types
+export type {
+  BlacklistDetectionResult,
+  BlacklistViolation,
+  FactVerificationResult,
+  UnverifiedClaim,
+  WarningStatus,
+  TopicBlacklistRow,
+  TopicBlacklistInsert,
+  TopicBlacklistUpdate,
+  BlacklistIncidentRow,
+  BlacklistIncidentInsert,
+  BlacklistWarningRow,
+  BlacklistWarningInsert,
+  BlacklistWarningUpdate,
+} from './fact-check';

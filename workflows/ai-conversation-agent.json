@@ -13,7 +13,10 @@
       "name": "Email Reply Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 200],
+      "position": [
+        250,
+        200
+      ],
       "webhookId": "email-reply",
       "id": "email-webhook"
     },
@@ -29,7 +32,10 @@
       "name": "LinkedIn Reply Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 400],
+      "position": [
+        250,
+        400
+      ],
       "webhookId": "linkedin-reply",
       "id": "linkedin-webhook"
     },
@@ -40,7 +46,10 @@
       "name": "Parse Webhook Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 300],
+      "position": [
+        450,
+        300
+      ],
       "id": "parse-payload"
     },
     {
@@ -51,7 +60,10 @@
       "name": "Find Prospect",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [650, 300],
+      "position": [
+        650,
+        300
+      ],
       "id": "find-prospect"
     },
     {
@@ -61,7 +73,10 @@
       "name": "Calculate Sentiment",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [850, 300],
+      "position": [
+        850,
+        300
+      ],
       "id": "calculate-sentiment"
     },
     {
@@ -72,7 +87,10 @@
       "name": "Fetch Enrichment",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [1050, 300],
+      "position": [
+        1050,
+        300
+      ],
       "id": "fetch-enrichment"
     },
     {
@@ -83,7 +101,10 @@
       "name": "Fetch Thread History",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [1250, 300],
+      "position": [
+        1250,
+        300
+      ],
       "id": "fetch-thread"
     },
     {
@@ -93,7 +114,10 @@
       "name": "Build Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1450, 300],
+      "position": [
+        1450,
+        300
+      ],
       "id": "build-context"
     },
     {
@@ -122,7 +146,10 @@
       "name": "Call Claude API (via API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1650, 300],
+      "position": [
+        1650,
+        300
+      ],
       "id": "call-claude"
     },
     {
@@ -132,7 +159,10 @@
       "name": "Parse Claude Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1850, 300],
+      "position": [
+        1850,
+        300
+      ],
       "id": "parse-claude"
     },
     {
@@ -154,17 +184,23 @@
       "name": "Get User Confidence Threshold",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2050, 300],
+      "position": [
+        2050,
+        300
+      ],
       "id": "get-threshold"
     },
     {
       "parameters": {
-        "jsCode": "// Merge threshold with context\nconst threshold = $json('Get User Confidence Threshold').data?.threshold || 80;\nreturn {\n  json: {\n    ...$json('Parse Claude Response'),\n    user_confidence_threshold: threshold\n  }\n};"
+        "jsCode": "// Merge threshold with context\nconst threshold = $json('Get User Confidence Threshold').data?.threshold || 80;\nconst vipCheck = $json('Check VIP Status');\nreturn {\n  json: {\n  ...vipCheck,\n  user_confidence_threshold: threshold\n  }\n};"
       },
       "name": "Merge Threshold",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2250, 300],
+      "position": [
+        2250,
+        300
+      ],
       "id": "merge-threshold"
     },
     {
@@ -201,7 +237,10 @@
       "name": "Qualified & High Confidence?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2050, 200],
+      "position": [
+        2050,
+        200
+      ],
       "id": "check-qualified"
     },
     {
@@ -230,7 +269,10 @@
       "name": "Generate Booking Link",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2250, 100],
+      "position": [
+        2250,
+        100
+      ],
       "id": "generate-booking"
     },
     {
@@ -258,7 +300,10 @@
       "name": "Low Confidence?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2050, 400],
+      "position": [
+        2050,
+        400
+      ],
       "id": "check-low-conf"
     },
     {
@@ -286,7 +331,10 @@
       "name": "Queue for Review",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [2250, 500],
+      "position": [
+        2250,
+        500
+      ],
       "id": "queue-review"
     },
     {
@@ -312,7 +360,10 @@
       "name": "Log Prospect Reply",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [850, 500],
+      "position": [
+        850,
+        500
+      ],
       "id": "log-reply"
     },
     {
@@ -324,8 +375,440 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [2450, 300],
+      "position": [
+        2450,
+        300
+      ],
       "id": "respond-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract VIP status from prospect data\nconst prospect = $json('Find Prospect');\nconst parsed = $json('Parse Claude Response');\nreturn {\n  json: {\n    ...parsed,\n    is_vip: prospect.is_vip || false,\n    prospect_id: prospect.id\n  }\n};"
+      },
+      "name": "Check VIP Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        300
+      ],
+      "id": "check-vip-status"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-vip",
+              "leftValue": "={{ $json.is_vip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Is VIP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2150,
+        300
+      ],
+      "id": "check-vip"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_review_queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "message_type": "={{ 'reply_response' }}",
+            "proposed_subject": "={{ $json.qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
+            "proposed_message": "={{ $json.qualification_result.reasoning }}",
+            "ai_confidence_score": "={{ $json.qualification_result.confidence_score }}",
+            "ai_reasoning": "={{ 'VIP account - requires manual approval regardless of confidence score' }}",
+            "status": "={{ 'pending' }}",
+            "priority": "={{ 10 }}",
+            "requires_immediate_attention": "={{ TRUE }}",
+            "enrichment_data_used": "={{ JSON.stringify($json.enrichment || {}) }}",
+            "template_id": "={{ $json.qualification_result.proposed_response_template_id }}"
+          }
+        }
+      },
+      "name": "Queue VIP for Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2350,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "queue-vip-review"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/fact-check/check` }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json('Parse Claude Response').qualification_result.reasoning || '', user_id: $json.user_id }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Check Blacklist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1950,
+        300
+      ],
+      "id": "check-blacklist"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract claims from AI message\nconst message = $json('Parse Claude Response').qualification_result.reasoning || '';\n\n// Claim patterns (simple regex matching)\nconst patterns = [\n  /(?:recent|just|latest|new).*funding/gi,\n  /raised.*\\$/gi,\n  /funding.*round/gi,\n  /series [a-z]/gi,\n  /(?:new|recent|just|latest).*product/gi,\n  /launched.*product/gi,\n  /product.*launch/gi,\n  /(?:expanding|expansion|growing|growth|opening|new.*office)/gi,\n  /(?:recent|just|latest).*news/gi,\n  /announced/gi,\n  /acquisition/gi,\n  /merger/gi\n];\n\nconst claims = [];\nfor (const pattern of patterns) {\n  const matches = message.match(pattern);\n  if (matches) {\n    claims.push(...matches.map(m => m.toLowerCase().trim()));\n  }\n}\n\n// Return unique claims\nconst uniqueClaims = Array.from(new Set(claims));\n\nreturn {\n  json: {\n    ...$json('Check Blacklist'),\n    extracted_claims: uniqueClaims\n  }\n};"
+      },
+      "name": "Extract Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2050,
+        300
+      ],
+      "id": "extract-claims"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/fact-check/verify` }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ claims: $json.extracted_claims || [], prospect_id: $json.prospect_id, user_id: $json.user_id }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Verify Claims",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2150,
+        300
+      ],
+      "id": "verify-claims"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-blacklist-detected",
+              "leftValue": "={{ $json('Check Blacklist').data?.detected }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Blacklist Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        200
+      ],
+      "id": "check-blacklist-if"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_review_queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "message_type": "={{ 'reply_response' }}",
+            "proposed_subject": "={{ $json('Parse Claude Response').qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
+            "proposed_message": "={{ $json('Parse Claude Response').qualification_result.reasoning }}",
+            "ai_confidence_score": "={{ $json('Parse Claude Response').qualification_result.confidence_score }}",
+            "ai_reasoning": "={{ `BLOCKED: Blacklisted content detected - ${($json('Check Blacklist').data?.violations || []).map((v: any) => v.category).join(', ')}` }}",
+            "status": "={{ 'pending' }}",
+            "priority": "={{ 10 }}",
+            "requires_immediate_attention": "={{ TRUE }}",
+            "enrichment_data_used": "={{ JSON.stringify({ blocked: true, violations: $json('Check Blacklist').data?.violations || [], severity: $json('Check Blacklist').data?.severity || 'block' }) }}",
+            "template_id": "={{ $json('Parse Claude Response').qualification_result.proposed_response_template_id }}"
+          }
+        }
+      },
+      "name": "Queue Blacklist Block",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2350,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "queue-blacklist-block"
+    },
+    {
+      "parameters": {
+        "url": "={{ `${$env.API_GATEWAY_URL || 'http://localhost:3000'}/api/fact-check/track-violation` }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, prospect_id: $json.prospect_id, category: ($json('Check Blacklist').data?.violations || [])[0]?.category || 'unknown' }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.API_SERVICE_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Track Violation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2350,
+        200
+      ],
+      "id": "track-violation"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-unverified",
+              "leftValue": "={{ $json('Verify Claims').data?.all_verified }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Unverified Claims?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        400
+      ],
+      "id": "check-unverified-if"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_review_queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "message_type": "={{ 'reply_response' }}",
+            "proposed_subject": "={{ $json('Parse Claude Response').qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
+            "proposed_message": "={{ $json('Parse Claude Response').qualification_result.reasoning }}",
+            "ai_confidence_score": "={{ $json('Parse Claude Response').qualification_result.confidence_score }}",
+            "ai_reasoning": "={{ `REVIEW NEEDED: Unverified claims detected - ${($json('Verify Claims').data?.unverified_claims || []).map((c: any) => c.claim).join(', ')}` }}",
+            "status": "={{ 'pending' }}",
+            "priority": "={{ 8 }}",
+            "requires_immediate_attention": "={{ FALSE }}",
+            "enrichment_data_used": "={{ JSON.stringify({ unverified_claims: $json('Verify Claims').data?.unverified_claims || [] }) }}",
+            "template_id": "={{ $json('Parse Claude Response').qualification_result.proposed_response_template_id }}"
+          }
+        }
+      },
+      "name": "Queue Unverified Claims",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2350,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "queue-unverified"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "blacklist_incidents",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "user_id": "={{ $json.user_id }}",
+            "prospect_id": "={{ $json.prospect_id }}",
+            "violation_category": "={{ ($json('Check Blacklist').data?.violations || [])[0]?.category || 'unknown' }}",
+            "blacklisted_phrase": "={{ ($json('Check Blacklist').data?.violations || [])[0]?.phrase || 'unknown' }}",
+            "matched_text": "={{ ($json('Check Blacklist').data?.violations || [])[0]?.matched_text || '' }}",
+            "message_preview": "={{ ($json('Parse Claude Response').qualification_result.reasoning || '').substring(0, 200) }}",
+            "severity": "={{ $json('Check Blacklist').data?.severity || 'block' }}"
+          }
+        }
+      },
+      "name": "Log Blacklist Incident",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2450,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "log-incident"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-escalated",
+              "leftValue": "={{ $json('Track Violation').data?.escalated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Escalated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        -100
+      ],
+      "id": "check-escalation"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "ai_review_queue",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "prospect_id": "={{ $json.prospect_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "message_type": "={{ 'reply_response' }}",
+            "proposed_subject": "={{ $json('Parse Claude Response').qualification_result.proposed_channel === 'email' ? 'Re: Your inquiry' : null }}",
+            "proposed_message": "={{ $json('Parse Claude Response').qualification_result.reasoning }}",
+            "ai_confidence_score": "={{ $json('Parse Claude Response').qualification_result.confidence_score }}",
+            "ai_reasoning": "={{ `ESCALATED: AI attempted blacklisted topic ${$json('Track Violation').data?.violation_count || 0} times for this prospect. Manual review required.` }}",
+            "status": "={{ 'pending' }}",
+            "priority": "={{ 10 }}",
+            "requires_immediate_attention": "={{ TRUE }}",
+            "enrichment_data_used": "={{ JSON.stringify({ escalated: true, violation_count: $json('Track Violation').data?.violation_count || 0, category: ($json('Check Blacklist').data?.violations || [])[0]?.category || 'unknown' }) }}",
+            "template_id": "={{ $json('Parse Claude Response').qualification_result.proposed_response_template_id }}"
+          }
+        }
+      },
+      "name": "Queue Escalation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2650,
+        -200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "supabase-connection",
+          "name": "Supabase PostgreSQL"
+        }
+      },
+      "id": "queue-escalation"
     }
   ],
   "connections": {
@@ -437,7 +920,7 @@
       "main": [
         [
           {
-            "node": "Get User Confidence Threshold",
+            "node": "Check Blacklist",
             "type": "main",
             "index": 0
           }
@@ -523,6 +1006,188 @@
           }
         ]
       ]
+    },
+    "Check VIP Status": {
+      "main": [
+        [
+          {
+            "node": "Is VIP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is VIP?": {
+      "main": [
+        [
+          {
+            "node": "Queue VIP for Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get User Confidence Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue VIP for Review": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Blacklist": {
+      "main": [
+        [
+          {
+            "node": "Blacklist Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Claims": {
+      "main": [
+        [
+          {
+            "node": "Verify Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Claims": {
+      "main": [
+        [
+          {
+            "node": "Unverified Claims?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unverified Claims?": {
+      "main": [
+        [
+          {
+            "node": "Queue Unverified Claims",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check VIP Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Unverified Claims": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blacklist Detected?": {
+      "main": [
+        [
+          {
+            "node": "Queue Blacklist Block",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Blacklist Block": {
+      "main": [
+        [
+          {
+            "node": "Track Violation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Violation": {
+      "main": [
+        [
+          {
+            "node": "Log Blacklist Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Blacklist Incident": {
+      "main": [
+        [
+          {
+            "node": "Escalated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalated?": {
+      "main": [
+        [
+          {
+            "node": "Queue Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Escalation": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -535,4 +1200,3 @@
   "updatedAt": "2025-01-11T12:00:00.000Z",
   "versionId": "1"
 }
-

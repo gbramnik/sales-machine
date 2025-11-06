@@ -24,3 +24,4 @@ COMMENT ON COLUMN public.prospect_enrichment.company_insights IS 'Company-level 
 COMMENT ON COLUMN public.prospect_enrichment.enrichment_source IS 'Source of enrichment data: linkedin_only, linkedin_company (profile + company), linkedin_company_web (+ web scraping), full (+ email finder)';
 
 
+

@@ -46,6 +46,62 @@ export class AIReviewService {
   }
 
   /**
+   * Get VIP pending review queue items only
+   */
+  async getVIPReviews(userId: string): Promise<ReviewQueueWithProspect[]> {
+    const { data, error } = await this.supabase
+      .from('ai_review_queue')
+      .select(`
+        *,
+        prospect:prospects!inner(id, full_name, company_name, job_title, is_vip)
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .eq('prospects.is_vip', true)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new ApiError(
+        ErrorCode.INTERNAL_SERVER_ERROR,
+        'Failed to fetch VIP review queue',
+        500,
+        error
+      );
+    }
+
+    return data as ReviewQueueWithProspect[];
+  }
+
+  /**
+   * Get non-VIP pending review queue items only
+   */
+  async getNonVIPReviews(userId: string): Promise<ReviewQueueWithProspect[]> {
+    const { data, error } = await this.supabase
+      .from('ai_review_queue')
+      .select(`
+        *,
+        prospect:prospects!inner(id, full_name, company_name, job_title, is_vip)
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .or('prospects.is_vip.eq.false,prospects.is_vip.is.null')
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new ApiError(
+        ErrorCode.INTERNAL_SERVER_ERROR,
+        'Failed to fetch non-VIP review queue',
+        500,
+        error
+      );
+    }
+
+    return data as ReviewQueueWithProspect[];
+  }
+
+  /**
    * Approve and send message
    */
   async approveMessage(userId: string, reviewId: string): Promise<void> {
@@ -84,9 +140,9 @@ export class AIReviewService {
     }
 
     // Determine channel
-    const channel = reviewItem.proposed_channel || (reviewItem.proposed_subject ? 'email' : 'linkedin');
-    const messageText = reviewItem.proposed_message || '';
-    const subject = reviewItem.proposed_subject || null;
+    const channel = (reviewItem as any).proposed_channel || ((reviewItem as any).proposed_subject ? 'email' : 'linkedin');                                                        
+    const messageText = (reviewItem as any).proposed_message || '';
+    const subject = (reviewItem as any).proposed_subject || null;
 
     // Send message via appropriate channel
     try {

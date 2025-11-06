@@ -296,3 +296,4 @@ BMad Core utilise **10 agents spécialisés** dans un workflow séquentiel en 2 
 **Status:** Guide de référence pour workflow BMad Core
 
 
+

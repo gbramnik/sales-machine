@@ -232,3 +232,4 @@ La story est dans docs/stories/1.2.linkedin-profile-scraping-workflow.md
 **Status:** Guide de transition après Master Checklist
 
 
+

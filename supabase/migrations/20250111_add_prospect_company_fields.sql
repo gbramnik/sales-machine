@@ -27,3 +27,4 @@ COMMENT ON COLUMN public.prospects.company_description IS 'Company description e
 COMMENT ON COLUMN public.prospects.email_confidence_score IS 'Email finder confidence score (0-100) indicating likelihood that found email is correct';
 
 
+

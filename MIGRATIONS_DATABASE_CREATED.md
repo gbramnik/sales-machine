@@ -147,3 +147,4 @@ supabase db push
 **Status:** ✅ Migrations créées, prêt pour tests
 
 
+

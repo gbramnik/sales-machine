@@ -1,8 +1,11 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { createSupabaseClient } from '../lib/supabase';
 import { ProspectService } from '../services/ProspectService';
+import { VIPDetectionService } from '../services/VIPDetectionService';
 import { authMiddleware } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
+import { ApiError, ErrorCode } from '../types';
 
 export async function prospectsRoutes(fastify: FastifyInstance) {
   // List prospects with filters
@@ -208,6 +211,75 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
+    }
+  );
+
+  // Mark prospect as VIP
+  fastify.post(
+    '/:id/mark-vip',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const vipService = new VIPDetectionService(supabase);
+
+      const params = request.params as { id: string };
+      
+      // Validate request body
+      const markVIPSchema = z.object({
+        reason: z.string().min(1).max(500).optional(),
+      });
+
+      const body = request.body as any;
+      const validationResult = markVIPSchema.safeParse(body);
+
+      if (!validationResult.success) {
+        throw new ApiError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid request body',
+          400,
+          validationResult.error.errors
+        );
+      }
+
+      const reason = validationResult.data.reason || 'Manually marked as VIP';
+      const result = await vipService.markAsVIP(
+        params.id,
+        req.user.userId,
+        reason,
+        false
+      );
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    }
+  );
+
+  // Unmark prospect as VIP
+  fastify.post(
+    '/:id/unmark-vip',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const vipService = new VIPDetectionService(supabase);
+
+      const params = request.params as { id: string };
+      const result = await vipService.unmarkAsVIP(
+        params.id,
+        req.user.userId
+      );
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
     }
   );
 }

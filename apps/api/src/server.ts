@@ -24,6 +24,8 @@ import { validationQueueRoutes } from './routes/validation-queue';
 import { exclusionRoutes } from './routes/exclusion';
 import { notificationRoutes } from './routes/notifications';
 import { confidenceRoutes } from './routes/confidence';
+import { vipRoutes } from './routes/vip';
+import { factCheckRoutes } from './routes/fact-check';
 
 const server = Fastify({
   logger: {
@@ -87,6 +89,8 @@ await server.register(onboardingRoutes, { prefix: '/onboarding' });
   await server.register(exclusionRoutes);
   await server.register(notificationRoutes);
   await server.register(confidenceRoutes);
+  await server.register(vipRoutes, { prefix: '/api/vip' });
+  await server.register(factCheckRoutes, { prefix: '/api/fact-check' });
 
 // Error handlers
 server.setErrorHandler(errorHandler);

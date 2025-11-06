@@ -16,11 +16,29 @@ export async function aiReviewQueueRoutes(fastify: FastifyInstance) {
       );
       const reviewService = new AIReviewService(supabase);
 
-      const reviews = await reviewService.getPendingReviews(req.user.userId);
+      const queryParams = request.query as { filter?: 'vip' | 'non_vip' | 'all' };
+      const filter = queryParams.filter || 'all';
+
+      let reviews;
+      if (filter === 'vip') {
+        reviews = await reviewService.getVIPReviews(req.user.userId);
+      } else if (filter === 'non_vip') {
+        reviews = await reviewService.getNonVIPReviews(req.user.userId);
+      } else {
+        reviews = await reviewService.getPendingReviews(req.user.userId);
+      }
+
+      // Get counts for metadata
+      const allReviews = await reviewService.getPendingReviews(req.user.userId);
+      const vipCount = allReviews.filter(r => r.prospect?.is_vip === true).length;
+      const nonVIPCount = allReviews.filter(r => !r.prospect?.is_vip).length;
 
       return reply.send({
         success: true,
         data: reviews,
+        filter,
+        vip_count: vipCount,
+        non_vip_count: nonVIPCount,
       });
     }
   );

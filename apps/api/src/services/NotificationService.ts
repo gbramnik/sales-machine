@@ -302,12 +302,16 @@ export class NotificationService {
    * 
    * @param userId - User ID
    * @param count - Number of pending reviews
-   * @param urgent - Whether any reviews are urgent (confidence < 60)
+   * @param urgent - Whether any reviews are urgent (confidence < 60 or VIP)
+   * @param vipCount - Number of VIP reviews (optional)
+   * @param nonVipCount - Number of non-VIP reviews (optional)
    */
   async notifyPendingReview(
     userId: string,
     count: number,
-    urgent: boolean = false
+    urgent: boolean = false,
+    vipCount?: number,
+    nonVipCount?: number
   ): Promise<void> {
     // Get user and notification preferences
     const { data: user, error } = await supabase
@@ -328,20 +332,31 @@ export class NotificationService {
     const sendEmail = preferences.email !== false; // Default to true if not set
     const sendInApp = preferences.in_app !== false; // Default to true if not set
 
-    // Get pending reviews for email content
+    // Get pending reviews for email content (include VIP status)
     const { data: reviews } = await supabase
       .from('ai_review_queue')
       .select(`
         id,
         ai_confidence_score,
         requires_immediate_attention,
-        prospect:prospects(full_name, company_name)
+        prospect:prospects!inner(full_name, company_name, is_vip)
       `)
       .eq('user_id', userId)
       .eq('status', 'pending')
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
-      .limit(10);
+      .limit(20); // Get more to separate VIP and non-VIP
+
+    // Separate VIP and non-VIP reviews
+    const vipReviews = (reviews || []).filter((r: any) => r.prospect?.is_vip === true);
+    const nonVipReviews = (reviews || []).filter((r: any) => !r.prospect?.is_vip);
+
+    // Calculate counts if not provided
+    const actualVipCount = vipCount !== undefined ? vipCount : vipReviews.length;
+    const actualNonVipCount = nonVipCount !== undefined ? nonVipCount : nonVipReviews.length;
+
+    // Update urgent flag if VIP reviews exist
+    const isUrgent = urgent || actualVipCount > 0 || (reviews || []).some((r: any) => (r.ai_confidence_score || 100) < 60);
 
     // Send email notification
     if (sendEmail) {
@@ -350,8 +365,11 @@ export class NotificationService {
           user.email,
           user.full_name || 'User',
           count,
-          reviews || [],
-          urgent
+          vipReviews,
+          nonVipReviews,
+          isUrgent,
+          actualVipCount,
+          actualNonVipCount
         );
       } catch (error) {
         console.error('Failed to send review notification email:', error);
@@ -386,25 +404,48 @@ export class NotificationService {
     userEmail: string,
     userName: string,
     count: number,
-    reviews: Array<{
-      id: string;
-      ai_confidence_score: number | null;
-      requires_immediate_attention: boolean | null;
-      prospect: {
-        full_name: string;
-        company_name: string;
-      } | null;
-    }>,
-    urgent: boolean
+    vipReviews: Array<any>,
+    nonVipReviews: Array<any>,
+    urgent: boolean,
+    vipCount: number,
+    nonVipCount: number
   ): Promise<void> {
     const apiGatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
     
     const subject = urgent
-      ? `🚨 URGENT: ${count} low-confidence AI message(s) require review`
-      : `${count} AI message(s) awaiting your review`;
+      ? `🚨 URGENT: ${vipCount} VIP + ${nonVipCount} regular message(s) require review`
+      : `${vipCount} VIP + ${nonVipCount} regular message(s) awaiting review`;
 
-    const reviewRows = reviews
-      .map(r => {
+    // Generate VIP review rows (highlighted)
+    const vipReviewRows = vipReviews
+      .slice(0, 10)
+      .map((r: any) => {
+        const prospectName = r.prospect?.full_name || 'Unknown';
+        const companyName = r.prospect?.company_name || 'Unknown';
+        const score = r.ai_confidence_score || 0;
+        const isUrgent = r.requires_immediate_attention || score < 60;
+        
+        return `
+          <tr style="background: #fff3cd;">
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">
+              <strong>🏆 ${prospectName}</strong><br>
+              ${companyName}
+            </td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">
+              ${score}% ${isUrgent ? '<span style="color: #dc3545;">🚨 URGENT</span>' : ''}
+            </td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">
+              <a href="${apiGatewayUrl}/dashboard/ai-review-queue" style="color: #0077b5;">Review</a>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    // Generate non-VIP review rows
+    const nonVipReviewRows = nonVipReviews
+      .slice(0, 10)
+      .map((r: any) => {
         const prospectName = r.prospect?.full_name || 'Unknown';
         const companyName = r.prospect?.company_name || 'Unknown';
         const score = r.ai_confidence_score || 0;
@@ -448,9 +489,27 @@ export class NotificationService {
           </div>
           <div class="content">
             <p>Hi ${userName},</p>
-            <p>You have <strong>${count} AI-generated message${count > 1 ? 's' : ''}</strong> awaiting your review. ${urgent ? '<strong style="color: #dc3545;">Some messages have very low confidence scores and require immediate attention.</strong>' : ''}</p>
+            <p>You have <strong>${count} AI-generated message${count > 1 ? 's' : ''}</strong> awaiting your review. ${urgent ? '<strong style="color: #dc3545;">Some messages have very low confidence scores or are from VIP accounts and require immediate attention.</strong>' : ''}</p>
             
-            <h3>Pending Reviews:</h3>
+            ${vipCount > 0 ? `
+            <h3 style="color: #ffc107; margin-top: 20px;">🏆 VIP Accounts (${vipCount}):</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th style="padding: 8px; border-bottom: 2px solid #ffc107;">Prospect</th>
+                  <th style="padding: 8px; border-bottom: 2px solid #ffc107;">Confidence</th>
+                  <th style="padding: 8px; border-bottom: 2px solid #ffc107;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${vipReviewRows}
+              </tbody>
+            </table>
+            ${vipCount > 10 ? `<p><em>... and ${vipCount - 10} more VIP reviews. View all in your dashboard.</em></p>` : ''}
+            ` : ''}
+            
+            ${nonVipCount > 0 ? `
+            <h3 style="margin-top: 20px;">Regular Accounts (${nonVipCount}):</h3>
             <table>
               <thead>
                 <tr>
@@ -460,9 +519,11 @@ export class NotificationService {
                 </tr>
               </thead>
               <tbody>
-                ${reviewRows}
+                ${nonVipReviewRows}
               </tbody>
             </table>
+            ${nonVipCount > 10 ? `<p><em>... and ${nonVipCount - 10} more regular reviews. View all in your dashboard.</em></p>` : ''}
+            ` : ''}
             
             ${count > 10 ? `<p><em>... and ${count - 10} more reviews. View all in your dashboard.</em></p>` : ''}
             

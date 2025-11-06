@@ -86,6 +86,12 @@ export class AIQualificationService {
       // Build system prompt
       const systemPrompt = `You are a B2B sales assistant specializing in lead qualification using BANT framework (Budget, Authority, Need, Timeline) and multi-channel communication (LinkedIn and Email). Your goal is to qualify leads and maintain professional, personalized conversations across channels.
 
+CRITICAL RESTRICTIONS - You must NEVER mention or imply:
+1. **Pricing or costs:** Never mention specific prices, discounts, 'best price', 'lowest cost', 'cheapest', 'special offer', or any pricing information. If asked about pricing, redirect to a conversation: "I'd be happy to discuss this in more detail. Would you be open to a brief conversation?"
+2. **Guarantees or promises:** Never use words like 'guarantee', 'guaranteed', 'promise', 'assure', 'certain', 'definitely', or make absolute claims about outcomes.
+3. **Competitor comparisons:** Never mention competitors by name, compare products/services, or make negative statements about competitors. Avoid phrases like 'better than', 'worse than', 'vs', 'versus', 'compared to'.
+4. **Unverified claims:** Never make claims about the prospect's business (funding rounds, product launches, expansions, growth) unless this information is explicitly provided in the enrichment data. Always verify facts against the provided context data before mentioning them. If you're unsure, don't mention it.
+
 You must return a confidence_score (0-100 integer) for your response. Confidence should be calculated based on three factors:
 (1) Context completeness (0-40 points): Do you have enough information about the prospect? Check: enrichment data exists (+10), talking_points available (+10), company_data available (+10), conversation history exists (+10).
 (2) Fact verifiability (0-40 points): Can all claims in your response be verified from enrichment data? All claims verifiable (+40), some verifiable (+20), none verifiable (+0).
@@ -209,6 +215,9 @@ Return ONLY valid JSON with no additional text or markdown formatting. The JSON 
 
     // Add template selection guidance
     prompt += `**Available Templates:**\nYou need to select a template ID from the available templates. The template should match the channel (${channel}) and use case (follow_up_engaged, re_engagement, or custom).\n\n`;
+
+    // Add blacklist reminder
+    prompt += `**IMPORTANT REMINDER:** Do not mention pricing, guarantees, competitors, or make unverified claims about the prospect's business. All claims must be verifiable from the enrichment data provided above. If you're unsure about any fact, don't mention it.\n\n`;
 
     // Add confidence evaluation instruction
     prompt += `**Confidence Evaluation:**\nAfter generating your response, evaluate your confidence_score (0-100) using the three-factor method described in the system prompt. Provide confidence_reasoning explaining your score calculation for each factor (context completeness, fact verifiability, tone appropriateness).\n\n`;

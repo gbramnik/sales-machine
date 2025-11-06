@@ -1,6 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { requireAuth, getUserId } from '../middleware/auth';
+import { createSupabaseClient } from '../lib/supabase';
 import { MetricsService } from '../services/MetricsService';
+import { VIPAnalyticsService } from '../services/VIPAnalyticsService';
+import { AuthenticatedRequest } from '../types';
 
 export async function metricsRoutes(server: FastifyInstance) {
   const metricsService = new MetricsService();
@@ -71,6 +74,75 @@ export async function metricsRoutes(server: FastifyInstance) {
     } catch (error: any) {
       return reply.code(500).send({
         error: 'Failed to sync metrics',
+        message: error.message,
+      });
+    }
+  });
+
+  // Get VIP analytics
+  server.get('/vip', {
+    preHandler: requireAuth,
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date in YYYY-MM-DD format (default: 30 days ago)',
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date in YYYY-MM-DD format (default: today)',
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const req = request as AuthenticatedRequest;
+    const supabase = createSupabaseClient(
+      request.headers.authorization!.substring(7)
+    );
+    const vipAnalyticsService = new VIPAnalyticsService(supabase);
+
+    const queryParams = request.query as {
+      start_date?: string;
+      end_date?: string;
+    };
+
+    // Default to last 30 days
+    const endDate = queryParams.end_date
+      ? new Date(queryParams.end_date)
+      : new Date();
+    const startDate = queryParams.start_date
+      ? new Date(queryParams.start_date)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    try {
+      const conversionMetrics = await vipAnalyticsService.getVIPConversionMetrics(
+        req.user.userId,
+        startDate,
+        endDate
+      );
+
+      const reviewMetrics = await vipAnalyticsService.getVIPReviewMetrics(
+        req.user.userId,
+        startDate,
+        endDate
+      );
+
+      return reply.send({
+        success: true,
+        data: {
+          conversion_metrics: conversionMetrics,
+          review_metrics: reviewMetrics,
+        },
+      });
+    } catch (error: any) {
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch VIP analytics',
         message: error.message,
       });
     }

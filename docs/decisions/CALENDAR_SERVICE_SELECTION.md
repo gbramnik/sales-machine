@@ -129,3 +129,4 @@ CAL_COM_USERNAME=your_username  # Optional: for booking link generation
 - Story 1.7: `docs/stories/1.7.meeting-booking-integration.md`
 
 
+
