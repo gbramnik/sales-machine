@@ -26,9 +26,9 @@ class ApiClient {
    * Get authentication token from Supabase session
    */
   private async getAuthToken(): Promise<string | null> {
-    // TODO: Replace with actual Supabase client once auth is set up
-    // For now, return null (will need to be implemented)
-    return null;
+    const { supabase } = await import('./supabase');
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
   }
 
   /**
@@ -46,7 +46,7 @@ class ApiClient {
     };
 
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
 
     const response = await fetch(`${this.baseURL}${endpoint}`, {
@@ -64,8 +64,10 @@ class ApiClient {
 
       // Handle 401 Unauthorized
       if (response.status === 401) {
-        // TODO: Redirect to login
-        console.error('Unauthorized - redirecting to login');
+        const { supabase } = await import('./supabase');
+        await supabase.auth.signOut();
+        // Redirect will be handled by ProtectedRoute
+        window.location.href = '/login';
       }
 
       throw new Error(error.error?.message || 'Request failed');
@@ -212,6 +214,147 @@ class ApiClient {
 
   async getAllSettings() {
     return this.request('/settings/all');
+  }
+
+  // Dashboard endpoints
+  async getDashboardStats() {
+    return this.request<{ success: true; data: any }>('/dashboard/stats');
+  }
+
+  async getDashboardPipeline() {
+    return this.request<{ success: true; data: any }>('/dashboard/pipeline');
+  }
+
+  async getDashboardActivityStream(params?: { limit?: number }) {
+    const query = params?.limit ? `?limit=${params.limit}` : '';
+    return this.request<{ success: true; data: any }>(`/dashboard/activity-stream${query}`);
+  }
+
+  async getDashboardAlerts() {
+    return this.request<{ success: true; data: any }>('/dashboard/alerts');
+  }
+
+  async dismissAlert(alertId: string) {
+    return this.request(`/dashboard/alerts/${alertId}/dismiss`, {
+      method: 'POST',
+    });
+  }
+
+  // Review Queue endpoints (Story 5.3)
+  async getReviewQueue(params?: { filter?: 'vip' | 'non_vip' | 'all' }) {
+    const query = params?.filter ? `?filter=${params.filter}` : '';
+    return this.request<{ success: true; data: any[]; vip_count?: number; non_vip_count?: number }>(`/ai-review-queue${query}`);
+  }
+
+  async approveReviewMessage(reviewId: string) {
+    return this.request(`/ai-review-queue/${reviewId}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async editReviewMessage(reviewId: string, data: { edited_message?: string; edited_subject?: string }) {
+    return this.request(`/ai-review-queue/${reviewId}/edit`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async rejectReviewMessage(reviewId: string, reason?: string) {
+    return this.request(`/ai-review-queue/${reviewId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async bulkApproveReviewMessages(reviewIds: string[]) {
+    return this.request('/ai-review-queue/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ review_ids: reviewIds }),
+    });
+  }
+
+  async bulkRejectReviewMessages(reviewIds: string[], reason?: string) {
+    return this.request('/ai-review-queue/bulk-reject', {
+      method: 'POST',
+      body: JSON.stringify({ review_ids: reviewIds, reason }),
+    });
+  }
+
+  async getProspect(prospectId: string) {
+    return this.request(`/prospects/${prospectId}`);
+  }
+
+  // Onboarding endpoints
+  async startOnboarding() {
+    return this.request<{ success: true; data: any }>('/onboarding/start', {
+      method: 'POST',
+    });
+  }
+
+  async getOnboardingStatus() {
+    return this.request<{ success: true; data: { session: any; checklist: any } }>('/onboarding/status');
+  }
+
+  async saveGoalSelection(goal: '5-10' | '10-20' | '20-30') {
+    return this.request<{ success: true; data: { session: any; current_step: string } }>('/onboarding/step/goal', {
+      method: 'POST',
+      body: JSON.stringify({ goal }),
+    });
+  }
+
+  async getIndustries() {
+    return this.request<{ success: true; data: { industries: string[] } }>('/onboarding/industries');
+  }
+
+  async saveIndustrySelection(industry: string) {
+    return this.request<{ success: true; data: { session: any; current_step: string; icp_suggestions: any } }>('/onboarding/step/industry', {
+      method: 'POST',
+      body: JSON.stringify({ industry }),
+    });
+  }
+
+  async getICPSuggestions(industry?: string) {
+    const query = industry ? `?industry=${encodeURIComponent(industry)}` : '';
+    return this.request<{ success: true; data: any }>(`/onboarding/step/icp/suggestions${query}`);
+  }
+
+  async saveICPConfig(icpConfig: {
+    job_titles?: string[];
+    company_sizes?: string[];
+    locations?: string[];
+  }) {
+    return this.request<{ success: true; data: { session: any; current_step: string } }>('/onboarding/step/icp', {
+      method: 'POST',
+      body: JSON.stringify(icpConfig),
+    });
+  }
+
+  async verifyDomain(domain: string) {
+    return this.request<{ success: true; data: any }>('/onboarding/step/domain/verify', {
+      method: 'POST',
+      body: JSON.stringify({ domain }),
+    });
+  }
+
+  async getCalendarOAuthUrl(provider: 'google' | 'outlook') {
+    return this.request<{ success: true; data: { oauth_url: string; state: string } }>(`/onboarding/step/calendar/oauth-url?provider=${provider}`);
+  }
+
+  async handleCalendarOAuthCallback(code: string, state: string, provider: 'google' | 'outlook') {
+    return this.request<{ success: true; data: any }>('/onboarding/step/calendar/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state, provider }),
+    });
+  }
+
+  async getPreflightChecklist() {
+    return this.request<{ success: true; data: any }>('/onboarding/preflight-checklist');
+  }
+
+  async completeOnboarding() {
+    return this.request<{ success: true; data: { session: any; auto_config: any } }>('/onboarding/complete', {
+      method: 'POST',
+    });
   }
 
   // Health check

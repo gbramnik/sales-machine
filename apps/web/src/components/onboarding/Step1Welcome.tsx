@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Target, Rocket, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -7,25 +7,30 @@ interface Step1WelcomeProps {
   selectedGoal: string | null
   onSelectGoal: (goal: string) => void
   onNext: () => void
+  onSaveGoal: (goal: '5-10' | '10-20' | '20-30') => Promise<void>
+  isLoading?: boolean
 }
 
 const goalOptions = [
   {
-    id: 'starter',
+    id: '5-10',
+    apiValue: '5-10' as const,
     icon: Target,
     title: '5-10 Meetings',
     subtitle: 'Starter',
     description: 'Perfect for solo entrepreneurs',
   },
   {
-    id: 'growth',
+    id: '10-20',
+    apiValue: '10-20' as const,
     icon: Rocket,
     title: '10-20 Meetings',
     subtitle: 'Growth',
     description: 'Small team support',
   },
   {
-    id: 'scale',
+    id: '20-30',
+    apiValue: '20-30' as const,
     icon: Zap,
     title: '20-30 Meetings',
     subtitle: 'Scale',
@@ -37,7 +42,45 @@ export const Step1Welcome: React.FC<Step1WelcomeProps> = ({
   selectedGoal,
   onSelectGoal,
   onNext,
+  onSaveGoal,
+  isLoading = false,
 }) => {
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSelectGoal = async (goalId: string) => {
+    const goalOption = goalOptions.find(g => g.id === goalId)
+    if (!goalOption) return
+
+    onSelectGoal(goalId)
+    
+    try {
+      setIsSaving(true)
+      await onSaveGoal(goalOption.apiValue)
+    } catch (error) {
+      console.error('Failed to save goal:', error)
+      // Optionally show error toast
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleNext = async () => {
+    if (!selectedGoal) return
+    
+    try {
+      setIsSaving(true)
+      const goalOption = goalOptions.find(g => g.id === selectedGoal)
+      if (goalOption) {
+        await onSaveGoal(goalOption.apiValue)
+      }
+      onNext()
+    } catch (error) {
+      console.error('Failed to save goal:', error)
+      // Optionally show error toast
+    } finally {
+      setIsSaving(false)
+    }
+  }
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -69,7 +112,8 @@ export const Step1Welcome: React.FC<Step1WelcomeProps> = ({
             return (
               <button
                 key={option.id}
-                onClick={() => onSelectGoal(option.id)}
+                onClick={() => handleSelectGoal(option.id)}
+                disabled={isSaving || isLoading}
                 className={cn(
                   "w-full h-[180px] rounded-lg border-2 bg-white p-6 transition-all duration-200",
                   "flex flex-col items-center justify-center gap-3",
@@ -112,12 +156,12 @@ export const Step1Welcome: React.FC<Step1WelcomeProps> = ({
       {/* Continue Button */}
       <div className="flex justify-end">
         <Button
-          onClick={onNext}
-          disabled={!selectedGoal}
+          onClick={handleNext}
+          disabled={!selectedGoal || isSaving || isLoading}
           size="lg"
           className="min-w-[140px]"
         >
-          Continue
+          {isSaving ? 'Saving...' : 'Continue'}
         </Button>
       </div>
     </div>

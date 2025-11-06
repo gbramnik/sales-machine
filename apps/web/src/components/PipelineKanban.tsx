@@ -52,7 +52,7 @@ export const PipelineKanban: React.FC<PipelineKanbanProps> = ({
       </div>
 
       {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 overflow-x-auto">
         {stages.map((stage) => (
           <div
             key={stage.id}

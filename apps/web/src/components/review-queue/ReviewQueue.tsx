@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { MessageReviewCard } from '../MessageReviewCard'
-import { CheckCircle, Crown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { EnrichmentContextPanel } from './EnrichmentContextPanel'
+import { CheckCircle, Crown, Filter, ChevronLeft, ChevronRight, Search, X, CheckSquare, Square } from 'lucide-react'
+import { useReviewQueue, type ReviewQueueItem } from '@/hooks/useReviewQueue'
+import { useReviewActions } from '@/hooks/useReviewActions'
 
 interface Message {
   id: string
   prospect: {
+    id: string
     name: string
     company: string
     title: string
@@ -26,221 +31,287 @@ interface Message {
   }
   isVIP: boolean
   flagReason: 'vip' | 'low-confidence'
+  channel: 'linkedin' | 'email'
 }
 
-const mockMessages: Message[] = [
-  {
-    id: '1',
+// Transform API review item to Message format
+const transformReviewToMessage = (review: ReviewQueueItem): Message => {
+  return {
+    id: review.id,
     prospect: {
-      name: 'Sarah Chen',
-      company: 'FinTech Solutions',
-      title: 'VP of Marketing',
-      location: 'San Francisco, CA',
-      linkedinUrl: 'https://linkedin.com/in/sarahchen',
+      id: review.prospect.id,
+      name: review.prospect.full_name,
+      company: review.prospect.company_name || '',
+      title: review.prospect.job_title || '',
+      linkedinUrl: undefined,
     },
     message: {
-      id: 'msg-1',
-      content: `Hi Sarah,
-
-I noticed your team just brought on two new SDRs—congratulations! Scaling outreach is exciting but challenging.
-
-Many marketing leaders we work with hit a wall when trying to scale their sales development efforts. The common pain points are:
-
-• Lead quality inconsistency
-• Time-consuming prospect research
-• Follow-up sequence management
-• Meeting booking coordination
-
-I'd love to share how we've helped similar companies automate their prospecting while maintaining personalization. Would you be open to a 15-minute conversation this week?
-
-Best regards,
-John`,
-      confidence: 87,
-      generatedAt: new Date(Date.now() - 10 * 60 * 1000),
+      id: review.id,
+      content: review.proposed_message,
+      confidence: review.ai_confidence_score,
+      generatedAt: new Date(review.created_at),
     },
     context: {
-      talkingPoints: [
-        'Recent hire: 2 SDRs (LinkedIn Jobs)',
-        'Pain point: Lead gen scaling challenges',
-        'Engaged with post about sales automation (3 days ago)',
-      ],
-      recentActivity: 'Posted about challenges onboarding new sales team members (Oct 2)',
+      talkingPoints: [],
+      recentActivity: '',
+      conversationHistory: undefined,
     },
-    isVIP: true,
-    flagReason: 'vip',
-  },
-  {
-    id: '2',
-    prospect: {
-      name: 'Michael Rodriguez',
-      company: 'TechStart Inc',
-      title: 'CEO',
-      location: 'New York, NY',
-      linkedinUrl: 'https://linkedin.com/in/mrodriguez',
-    },
-    message: {
-      id: 'msg-2',
-      content: `Hi Michael,
-
-Saw your recent funding announcement—exciting times! Growing from 10 to 50 people in Q1 is impressive.
-
-As you scale, one challenge many CEOs face is keeping the sales pipeline full while building out the team. We've helped companies at your stage maintain momentum during rapid growth.
-
-Would love to share some insights on how to scale outreach without sacrificing quality. Open to a quick call?
-
-Cheers,
-John`,
-      confidence: 91,
-      generatedAt: new Date(Date.now() - 25 * 60 * 1000),
-    },
-    context: {
-      talkingPoints: [
-        'Recent Series A funding ($5M)',
-        'Hiring: 40 new positions (LinkedIn)',
-        'Pain point: Scaling sales operations',
-      ],
-      recentActivity: 'Announced Series A funding and hiring plans (5 days ago)',
-    },
-    isVIP: true,
-    flagReason: 'vip',
-  },
-  {
-    id: '3',
-    prospect: {
-      name: 'Emily Watson',
-      company: 'Growth Partners',
-      title: 'Head of Sales',
-      location: 'Boston, MA',
-    },
-    message: {
-      id: 'msg-3',
-      content: `Hi Emily,
-
-I noticed you're hiring for 3 SDR positions. That's great news for Growth Partners!
-
-One pattern I see with growing sales teams is the challenge of maintaining consistent outreach quality as you scale. Many heads of sales tell me they spend too much time reviewing emails and managing sequences.
-
-Would you be interested in exploring how automation can help your new SDRs ramp faster?
-
-Best,
-John`,
-      confidence: 73,
-      generatedAt: new Date(Date.now() - 45 * 60 * 1000),
-    },
-    context: {
-      talkingPoints: [
-        'Hiring: 3 SDR positions (LinkedIn)',
-        'Company growth: 25% YoY',
-        'Recent post about sales team challenges',
-      ],
-      recentActivity: 'Posted about SDR onboarding challenges (1 week ago)',
-    },
-    isVIP: false,
-    flagReason: 'low-confidence',
-  },
-]
+    isVIP: review.prospect.is_vip || false,
+    flagReason: review.prospect.is_vip ? 'vip' : 'low-confidence',
+    channel: review.channel,
+  };
+};
 
 export const ReviewQueue: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'vip' | 'low-confidence'>('vip')
-  const [messages, setMessages] = useState(mockMessages)
+  const [activeTab, setActiveTab] = useState<'vip' | 'low-confidence'>('low-confidence')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showFilters, setShowFilters] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [confidenceFilter, setConfidenceFilter] = useState<string>('all')
+  const [dateFilter, setDateFilter] = useState<string>('all')
+  const [channelFilter, setChannelFilter] = useState<string>('all')
+  const [showBulkActions, setShowBulkActions] = useState(false)
 
-  // Filter messages by tab
-  const filteredMessages = messages.filter((msg) => msg.flagReason === activeTab)
-  const currentMessage = filteredMessages[currentIndex]
+  // Map tab to filter
+  const filter = activeTab === 'vip' ? 'vip' : 'low_confidence';
+  const { reviews, isLoading, error, vipCount, lowConfidenceCount, refetch } = useReviewQueue(filter);
+  const { approveMessage, editMessage, rejectMessage, bulkApprove, bulkReject, isLoading: actionsLoading } = useReviewActions();
 
-  // Get counts for badges
-  const vipCount = messages.filter((msg) => msg.flagReason === 'vip').length
-  const lowConfidenceCount = messages.filter((msg) => msg.flagReason === 'low-confidence').length
+  // Transform reviews to messages format
+  const messages = useMemo(() => reviews.map(transformReviewToMessage), [reviews]);
 
-  const handleApprove = (messageId: string) => {
-    console.log('Approved:', messageId)
-    removeMessage(messageId)
-    showNextMessage()
-  }
+  // Filter messages based on search and filters
+  const filteredMessages = useMemo(() => {
+    let filtered = messages;
 
-  const handleEdit = (messageId: string, newContent: string) => {
-    console.log('Edited:', messageId, newContent)
-    removeMessage(messageId)
-    showNextMessage()
-  }
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (msg) =>
+          msg.prospect.name.toLowerCase().includes(query) ||
+          msg.prospect.company.toLowerCase().includes(query)
+      );
+    }
 
-  const handleReject = (messageId: string, reason?: string) => {
-    console.log('Rejected:', messageId, reason)
-    removeMessage(messageId)
-    showNextMessage()
-  }
+    // Confidence filter
+    if (confidenceFilter !== 'all') {
+      filtered = filtered.filter((msg) => {
+        const score = msg.message.confidence;
+        switch (confidenceFilter) {
+          case '<60':
+            return score < 60;
+          case '60-75':
+            return score >= 60 && score < 75;
+          case '75-80':
+            return score >= 75 && score < 80;
+          case '>80':
+            return score > 80;
+          default:
+            return true;
+        }
+      });
+    }
 
-  const removeMessage = (messageId: string) => {
-    setMessages(messages.filter((msg) => msg.message.id !== messageId))
-  }
+    // Date filter
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter((msg) => {
+        const msgDate = msg.message.generatedAt;
+        switch (dateFilter) {
+          case 'today':
+            return msgDate.toDateString() === now.toDateString();
+          case 'last_7_days':
+            return (now.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24) <= 7;
+          case 'last_30_days':
+            return (now.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24) <= 30;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Channel filter
+    if (channelFilter !== 'all') {
+      filtered = filtered.filter((msg) => msg.channel === channelFilter);
+    }
+
+    return filtered;
+  }, [messages, searchQuery, confidenceFilter, dateFilter, channelFilter]);
+
+  const currentMessage = filteredMessages[currentIndex];
+
+  // Update selectedIds when messages change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [messages]);
+
+  // Show bulk actions if any items are selected
+  useEffect(() => {
+    setShowBulkActions(selectedIds.size > 0);
+  }, [selectedIds.size]);
+
+  const handleApprove = async (messageId: string) => {
+    try {
+      await approveMessage(messageId);
+      await refetch();
+      showNextMessage();
+    } catch (err) {
+      console.error('Failed to approve message:', err);
+    }
+  };
+
+  const handleEdit = async (messageId: string, newContent: string, newSubject?: string) => {
+    try {
+      await editMessage(messageId, newContent, newSubject);
+      await refetch();
+      showNextMessage();
+    } catch (err) {
+      console.error('Failed to edit message:', err);
+    }
+  };
+
+  const handleReject = async (messageId: string, reason?: string) => {
+    try {
+      await rejectMessage(messageId, reason);
+      await refetch();
+      showNextMessage();
+    } catch (err) {
+      console.error('Failed to reject message:', err);
+    }
+  };
 
   const showNextMessage = () => {
-    // Move to next message or stay at current if it's the last
     if (currentIndex >= filteredMessages.length - 1) {
-      setCurrentIndex(Math.max(0, filteredMessages.length - 2))
+      setCurrentIndex(Math.max(0, filteredMessages.length - 2));
     }
   }
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1)
+      setCurrentIndex(currentIndex - 1);
     }
-  }
+  }, [currentIndex]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentIndex < filteredMessages.length - 1) {
-      setCurrentIndex(currentIndex + 1)
+      setCurrentIndex(currentIndex + 1);
     }
-  }
+  }, [currentIndex, filteredMessages.length]);
+
+  // Bulk actions
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredMessages.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredMessages.map((m) => m.id)));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleBulkApprove = async () => {
+    const toApprove = Array.from(selectedIds).filter((id) => {
+      const msg = filteredMessages.find((m) => m.id === id);
+      return msg && msg.message.confidence > 75;
+    });
+
+    if (toApprove.length === 0) {
+      alert('No messages with confidence >75% selected');
+      return;
+    }
+
+    if (!confirm(`Approve ${toApprove.length} messages with confidence >75%?`)) {
+      return;
+    }
+
+    try {
+      await bulkApprove(toApprove);
+      await refetch();
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error('Failed to bulk approve:', err);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const toReject = Array.from(selectedIds).filter((id) => {
+      const msg = filteredMessages.find((m) => m.id === id);
+      return msg && msg.message.confidence < 60;
+    });
+
+    if (toReject.length === 0) {
+      alert('No messages with confidence <60% selected');
+      return;
+    }
+
+    if (!confirm(`Reject ${toReject.length} messages with confidence <60%?`)) {
+      return;
+    }
+
+    try {
+      await bulkReject(toReject);
+      await refetch();
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error('Failed to bulk reject:', err);
+    }
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Only handle if not in input/textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return
+        return;
       }
 
       switch (e.key.toLowerCase()) {
         case 'j':
         case 'arrowdown':
-          e.preventDefault()
-          handleNext()
-          break
+          e.preventDefault();
+          handleNext();
+          break;
         case 'k':
         case 'arrowup':
-          e.preventDefault()
-          handlePrevious()
-          break
+          e.preventDefault();
+          handlePrevious();
+          break;
         case 'tab':
-          e.preventDefault()
-          setActiveTab(activeTab === 'vip' ? 'low-confidence' : 'vip')
-          setCurrentIndex(0)
-          break
+          e.preventDefault();
+          setActiveTab(activeTab === 'vip' ? 'low-confidence' : 'vip');
+          setCurrentIndex(0);
+          break;
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [activeTab, currentIndex, filteredMessages.length])
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [activeTab, currentIndex, filteredMessages.length, handleNext, handlePrevious]);
 
-  // Reset index when switching tabs
+  // Reset index when switching tabs or filters
   useEffect(() => {
-    setCurrentIndex(0)
-  }, [activeTab])
+    setCurrentIndex(0);
+  }, [activeTab, searchQuery, confidenceFilter, dateFilter, channelFilter]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-h1 text-gray-900">AI Message Review Queue</h1>
               <p className="text-body text-gray-600 mt-2">
-                {messages.length} messages awaiting review
+                {isLoading ? 'Loading...' : `${filteredMessages.length} messages awaiting review`}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -251,11 +322,125 @@ export const ReviewQueue: React.FC = () => {
                 <Filter className="w-4 h-4" />
                 Filter
               </button>
-              <div className="text-sm text-gray-500">
-                Press <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-mono">?</kbd> for shortcuts
-              </div>
             </div>
           </div>
+
+          {/* Search Bar */}
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by prospect name or company..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Panel */}
+          {showFilters && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Confidence Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Confidence Score
+                  </label>
+                  <select
+                    value={confidenceFilter}
+                    onChange={(e) => setConfidenceFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="<60">&lt;60%</option>
+                    <option value="60-75">60-75%</option>
+                    <option value="75-80">75-80%</option>
+                    <option value=">80">&gt;80%</option>
+                  </select>
+                </div>
+
+                {/* Date Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date Added
+                  </label>
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="today">Today</option>
+                    <option value="last_7_days">Last 7 days</option>
+                    <option value="last_30_days">Last 30 days</option>
+                  </select>
+                </div>
+
+                {/* Channel Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Channel
+                  </label>
+                  <select
+                    value={channelFilter}
+                    onChange={(e) => setChannelFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="email">Email</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Actions Toolbar */}
+          {showBulkActions && (
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-gray-900">
+                    {selectedIds.size} selected
+                  </span>
+                  <Button
+                    onClick={handleBulkApprove}
+                    disabled={actionsLoading}
+                    variant="default"
+                    size="sm"
+                    className="bg-success-600 hover:bg-success-700"
+                  >
+                    Approve Selected (&gt;75%)
+                  </Button>
+                  <Button
+                    onClick={handleBulkReject}
+                    disabled={actionsLoading}
+                    variant="destructive"
+                    size="sm"
+                  >
+                    Reject Selected (&lt;60%)
+                  </Button>
+                </div>
+                <Button
+                  onClick={() => setSelectedIds(new Set())}
+                  variant="ghost"
+                  size="sm"
+                >
+                  Clear Selection
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -274,7 +459,11 @@ export const ReviewQueue: React.FC = () => {
           </TabsList>
 
           <TabsContent value="vip">
-            {vipCount === 0 ? (
+            {isLoading ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+                <p className="text-gray-600">Loading reviews...</p>
+              </div>
+            ) : vipCount === 0 ? (
               <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
                 <Crown className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -284,8 +473,27 @@ export const ReviewQueue: React.FC = () => {
                   All high-value account messages have been approved or are pending send.
                 </p>
               </div>
+            ) : filteredMessages.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+                <p className="text-gray-600">No messages match your filters</p>
+              </div>
             ) : (
               <div className="space-y-6">
+                {/* Bulk Selection Checkbox */}
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-4 py-3">
+                  <button
+                    onClick={handleSelectAll}
+                    className="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900"
+                  >
+                    {selectedIds.size === filteredMessages.length ? (
+                      <CheckSquare className="w-5 h-5 text-primary-600" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                    <span>Select all ({filteredMessages.length})</span>
+                  </button>
+                </div>
+
                 {/* Navigation */}
                 <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
                   <div className="flex items-center gap-4">
@@ -316,25 +524,56 @@ export const ReviewQueue: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Message Review */}
+                {/* Message Review with Enrichment Panel */}
                 {currentMessage && (
-                  <MessageReviewCard
-                    key={currentMessage.id}
-                    prospect={currentMessage.prospect}
-                    message={currentMessage.message}
-                    context={currentMessage.context}
-                    onApprove={handleApprove}
-                    onEdit={handleEdit}
-                    onReject={handleReject}
-                    isVIP={currentMessage.isVIP}
-                  />
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Message Card (2/3 width) */}
+                    <div className="lg:col-span-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <button
+                          onClick={() => handleToggleSelect(currentMessage.id)}
+                          className="flex items-center"
+                        >
+                          {selectedIds.has(currentMessage.id) ? (
+                            <CheckSquare className="w-5 h-5 text-primary-600" />
+                          ) : (
+                            <Square className="w-5 h-5 text-gray-400" />
+                          )}
+                        </button>
+                        <span className="text-sm text-gray-600">Select for bulk action</span>
+                      </div>
+                      <MessageReviewCard
+                        key={currentMessage.id}
+                        prospect={currentMessage.prospect}
+                        message={currentMessage.message}
+                        context={currentMessage.context}
+                        onApprove={handleApprove}
+                        onEdit={handleEdit}
+                        onReject={handleReject}
+                        isVIP={currentMessage.isVIP}
+                      />
+                    </div>
+
+                    {/* Enrichment Context Panel (1/3 width) */}
+                    <div className="lg:col-span-1">
+                      <EnrichmentContextPanel
+                        prospectId={currentMessage.prospect.id}
+                        aiMessage={currentMessage.message.content}
+                        defaultExpanded={true}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="low-confidence">
-            {lowConfidenceCount === 0 ? (
+            {isLoading ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+                <p className="text-gray-600">Loading reviews...</p>
+              </div>
+            ) : lowConfidenceCount === 0 ? (
               <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
                 <CheckCircle className="w-16 h-16 mx-auto text-success-500 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -344,8 +583,27 @@ export const ReviewQueue: React.FC = () => {
                   Your AI Sales Rep is performing well! No manual reviews needed.
                 </p>
               </div>
+            ) : filteredMessages.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+                <p className="text-gray-600">No messages match your filters</p>
+              </div>
             ) : (
               <div className="space-y-6">
+                {/* Bulk Selection Checkbox */}
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-4 py-3">
+                  <button
+                    onClick={handleSelectAll}
+                    className="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900"
+                  >
+                    {selectedIds.size === filteredMessages.length ? (
+                      <CheckSquare className="w-5 h-5 text-primary-600" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                    <span>Select all ({filteredMessages.length})</span>
+                  </button>
+                </div>
+
                 {/* Navigation */}
                 <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
                   <div className="flex items-center gap-4">
@@ -376,18 +634,45 @@ export const ReviewQueue: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Message Review */}
+                {/* Message Review with Enrichment Panel */}
                 {currentMessage && (
-                  <MessageReviewCard
-                    key={currentMessage.id}
-                    prospect={currentMessage.prospect}
-                    message={currentMessage.message}
-                    context={currentMessage.context}
-                    onApprove={handleApprove}
-                    onEdit={handleEdit}
-                    onReject={handleReject}
-                    isVIP={currentMessage.isVIP}
-                  />
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Message Card (2/3 width) */}
+                    <div className="lg:col-span-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <button
+                          onClick={() => handleToggleSelect(currentMessage.id)}
+                          className="flex items-center"
+                        >
+                          {selectedIds.has(currentMessage.id) ? (
+                            <CheckSquare className="w-5 h-5 text-primary-600" />
+                          ) : (
+                            <Square className="w-5 h-5 text-gray-400" />
+                          )}
+                        </button>
+                        <span className="text-sm text-gray-600">Select for bulk action</span>
+                      </div>
+                      <MessageReviewCard
+                        key={currentMessage.id}
+                        prospect={currentMessage.prospect}
+                        message={currentMessage.message}
+                        context={currentMessage.context}
+                        onApprove={handleApprove}
+                        onEdit={handleEdit}
+                        onReject={handleReject}
+                        isVIP={currentMessage.isVIP}
+                      />
+                    </div>
+
+                    {/* Enrichment Context Panel (1/3 width) */}
+                    <div className="lg:col-span-1">
+                      <EnrichmentContextPanel
+                        prospectId={currentMessage.prospect.id}
+                        aiMessage={currentMessage.message.content}
+                        defaultExpanded={true}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -397,8 +682,3 @@ export const ReviewQueue: React.FC = () => {
     </div>
   )
 }
-
-
-
-
-

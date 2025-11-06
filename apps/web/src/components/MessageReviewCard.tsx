@@ -26,7 +26,7 @@ interface MessageReviewCardProps {
     conversationHistory?: string
   }
   onApprove: (messageId: string) => void
-  onEdit: (messageId: string, newContent: string) => void
+  onEdit: (messageId: string, newContent: string, newSubject?: string) => void
   onReject: (messageId: string, reason?: string) => void
   isVIP?: boolean
 }

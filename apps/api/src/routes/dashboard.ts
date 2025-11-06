@@ -72,4 +72,45 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       });
     }
   );
+
+  // Get alerts (Story 5.2 - Task 5)
+  fastify.get(
+    '/alerts',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const dashboardService = new DashboardService(supabase);
+
+      const alerts = await dashboardService.getAlerts(req.user.userId);
+
+      return reply.send({
+        success: true,
+        data: alerts,
+      });
+    }
+  );
+
+  // Dismiss alert (Story 5.2 - Task 5)
+  fastify.post(
+    '/alerts/:id/dismiss',
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const { id } = request.params as { id: string };
+      const supabase = createSupabaseClient(
+        request.headers.authorization!.substring(7)
+      );
+      const dashboardService = new DashboardService(supabase);
+
+      await dashboardService.dismissAlert(req.user.userId, id);
+
+      return reply.send({
+        success: true,
+        message: 'Alert dismissed',
+      });
+    }
+  );
 }

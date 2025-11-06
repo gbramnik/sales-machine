@@ -163,40 +163,91 @@ export class MeetingBookingService {
   }
 
   /**
-   * Get calendar credentials for user
+   * Get calendar credentials for user (with automatic token refresh)
    */
   private async getCalendarCredentials(userId: string): Promise<MeetingBookingCredentials> {
-    // Try to get from api_credentials table first
-    const { data: credentials } = await supabaseAdmin
-      .from('api_credentials')
-      .select('api_key, metadata')
-      .eq('user_id', userId)
-      .in('service_name', ['cal_com', 'calcom']) // Support both naming conventions
-      .eq('is_active', true)
+    // Get user's calendar provider
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('calendar_provider, calendar_access_token, calendar_token_expires_at')
+      .eq('id', userId)
       .single();
 
-    if (credentials) {
+    if (!user?.calendar_provider) {
+      // Fallback to api_credentials table
+      const { data: credentials } = await supabaseAdmin
+        .from('api_credentials')
+        .select('api_key, metadata, service_name')
+        .eq('user_id', userId)
+        .in('service_name', ['cal_com', 'calendly', 'calcom'])
+        .eq('is_active', true)
+        .single();
+
+      if (credentials) {
+        const provider = credentials.service_name === 'calcom' ? 'cal_com' : credentials.service_name as 'cal_com' | 'calendly';
+        // Check if we have OAuth token (from users table) or API key
+        const { data: user } = await supabaseAdmin
+          .from('users')
+          .select('calendar_provider, calendar_access_token, calendar_token_expires_at')
+          .eq('id', userId)
+          .single();
+
+        if (user?.calendar_provider && user.calendar_access_token) {
+          // Use OAuth token with refresh
+          const validToken = await this.getValidAccessToken(userId, provider);
+          return {
+            api_key: validToken,
+            base_url: credentials.metadata?.base_url || CAL_COM_API_URL,
+            oauth_client_id: credentials.metadata?.oauth_client_id,
+            oauth_client_secret: credentials.metadata?.oauth_client_secret,
+            metadata: credentials.metadata,
+          };
+        }
+
+        // Use API key directly (no OAuth)
+        return {
+          api_key: credentials.api_key || '',
+          base_url: credentials.metadata?.base_url || CAL_COM_API_URL,
+          oauth_client_id: credentials.metadata?.oauth_client_id,
+          oauth_client_secret: credentials.metadata?.oauth_client_secret,
+          metadata: credentials.metadata,
+        };
+      }
+
+      // Final fallback to environment variables
+      const apiKey = CAL_COM_API_KEY;
+      if (!apiKey) {
+        throw new ApiError(
+          ErrorCode.INVALID_CONFIG,
+          'Calendar not connected. Please connect your calendar in onboarding.',
+          400
+        );
+      }
+
       return {
-        api_key: credentials.api_key || '',
-        base_url: credentials.metadata?.base_url || CAL_COM_API_URL,
-        oauth_client_id: credentials.metadata?.oauth_client_id,
-        oauth_client_secret: credentials.metadata?.oauth_client_secret,
+        api_key: apiKey,
+        base_url: CAL_COM_API_URL,
       };
     }
 
-    // Fallback to environment variables
-    const apiKey = CAL_COM_API_KEY;
-    if (!apiKey) {
-      throw new ApiError(
-        ErrorCode.INVALID_CONFIG,
-        'Cal.com API key not configured. Please configure calendar credentials in settings.',
-        400
-      );
-    }
+    // Use OAuth token with automatic refresh
+    const provider = user.calendar_provider as 'cal_com' | 'calendly';
+    const validToken = await this.getValidAccessToken(userId, provider);
+
+    // Get full credentials from api_credentials table
+    const { data: credentials } = await supabaseAdmin
+      .from('api_credentials')
+      .select('metadata')
+      .eq('user_id', userId)
+      .eq('service_name', provider === 'cal_com' ? 'cal_com' : 'calendly')
+      .single();
 
     return {
-      api_key: apiKey,
-      base_url: CAL_COM_API_URL,
+      api_key: validToken,
+      base_url: credentials?.metadata?.base_url || (provider === 'cal_com' ? CAL_COM_API_URL : 'https://api.calendly.com'),
+      oauth_client_id: credentials?.metadata?.oauth_client_id,
+      oauth_client_secret: credentials?.metadata?.oauth_client_secret,
+      metadata: credentials?.metadata,
     };
   }
 
@@ -300,6 +351,174 @@ export class MeetingBookingService {
       url: bookingUrl.toString(),
       bookingId,
     };
+  }
+
+  /**
+   * Refresh expired access token
+   * 
+   * @param userId - User ID
+   * @param provider - Calendar provider ('cal_com' or 'calendly')
+   * @returns New access token and expiration time
+   */
+  async refreshAccessToken(userId: string, provider: 'cal_com' | 'calendly'): Promise<{ accessToken: string; expiresAt: Date }> {
+    // Get refresh token from database
+    const { data: credential } = await supabaseAdmin
+      .from('api_credentials')
+      .select('api_key, metadata')
+      .eq('user_id', userId)
+      .eq('service_name', provider === 'cal_com' ? 'cal_com' : 'calendly')
+      .single();
+
+    if (!credential) {
+      throw new ApiError(
+        ErrorCode.NOT_FOUND,
+        'Calendar credentials not found',
+        404
+      );
+    }
+
+    const refreshToken = (credential.metadata as any)?.refresh_token;
+    if (!refreshToken) {
+      throw new ApiError(
+        ErrorCode.INVALID_CONFIG,
+        'Refresh token not available',
+        400
+      );
+    }
+
+    let tokenResponse: Response;
+    let tokenData: any;
+
+    if (provider === 'cal_com') {
+      const clientId = process.env.CAL_COM_OAUTH_CLIENT_ID;
+      const clientSecret = process.env.CAL_COM_OAUTH_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        throw new ApiError(
+          ErrorCode.INVALID_CONFIG,
+          'CAL_COM_OAUTH_CLIENT_ID and CAL_COM_OAUTH_CLIENT_SECRET environment variables are required',
+          400
+        );
+      }
+
+      const baseUrl = process.env.CAL_COM_BASE_URL || 'https://api.cal.com/v1';
+      tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          refresh_token: refreshToken,
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'refresh_token',
+        }),
+      });
+    } else {
+      // Calendly
+      const clientId = process.env.CALENDLY_OAUTH_CLIENT_ID;
+      const clientSecret = process.env.CALENDLY_OAUTH_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        throw new ApiError(
+          ErrorCode.INVALID_CONFIG,
+          'CALENDLY_OAUTH_CLIENT_ID and CALENDLY_OAUTH_CLIENT_SECRET environment variables are required',
+          400
+        );
+      }
+
+      tokenResponse = await fetch('https://auth.calendly.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          refresh_token: refreshToken,
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'refresh_token',
+        }),
+      });
+    }
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      throw new ApiError(
+        ErrorCode.INTERNAL_SERVER_ERROR,
+        `Failed to refresh token: ${tokenResponse.statusText} - ${errorText}`,
+        500
+      );
+    }
+
+    tokenData = await tokenResponse.json();
+    const newAccessToken = tokenData.access_token;
+    const newRefreshToken = tokenData.refresh_token || refreshToken; // Use new refresh token if provided
+    const expiresAt = tokenData.expires_in 
+      ? new Date(Date.now() + tokenData.expires_in * 1000)
+      : new Date(Date.now() + 3600 * 1000); // Default 1 hour
+
+    // Update tokens in database
+    await supabaseAdmin
+      .from('users')
+      .update({
+        calendar_access_token: newAccessToken,
+        calendar_refresh_token: newRefreshToken,
+        calendar_token_expires_at: expiresAt.toISOString(),
+      })
+      .eq('id', userId);
+
+    // Update api_credentials table
+    await supabaseAdmin
+      .from('api_credentials')
+      .update({
+        api_key: newAccessToken,
+        metadata: {
+          ...(credential.metadata as any),
+          refresh_token: newRefreshToken,
+          expires_at: expiresAt.toISOString(),
+        },
+      })
+      .eq('user_id', userId)
+      .eq('service_name', provider === 'cal_com' ? 'cal_com' : 'calendly');
+
+    return {
+      accessToken: newAccessToken,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Get valid access token (refresh if expired)
+   * 
+   * @param userId - User ID
+   * @param provider - Calendar provider
+   * @returns Valid access token
+   */
+  async getValidAccessToken(userId: string, provider: 'cal_com' | 'calendly'): Promise<string> {
+    // Check token expiration
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('calendar_access_token, calendar_token_expires_at')
+      .eq('id', userId)
+      .single();
+
+    if (!user?.calendar_access_token) {
+      throw new ApiError(
+        ErrorCode.NOT_FOUND,
+        'Calendar not connected',
+        404
+      );
+    }
+
+    // Check if token is expired
+    if (user.calendar_token_expires_at) {
+      const expiresAt = new Date(user.calendar_token_expires_at);
+      const now = new Date();
+      
+      // Refresh if expired or expires within 5 minutes
+      if (expiresAt <= new Date(now.getTime() + 5 * 60 * 1000)) {
+        const refreshed = await this.refreshAccessToken(userId, provider);
+        return refreshed.accessToken;
+      }
+    }
+
+    return user.calendar_access_token;
   }
 
   /**

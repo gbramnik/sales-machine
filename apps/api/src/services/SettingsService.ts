@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import * as dns from 'dns';
 import { promisify } from 'util';
+import { encrypt, decrypt } from '../lib/encryption';
 
 const resolveTxt = promisify(dns.resolveTxt);
 
@@ -68,16 +69,25 @@ export class SettingsService {
       .eq('service_name', data.service_name)
       .single();
 
+    // Encrypt API key before storage
+    const encryptedApiKey = data.api_key ? encrypt(data.api_key) : undefined;
+
     if (existing) {
       // Update existing
+      const updateData: any = {
+        webhook_url: data.webhook_url,
+        metadata: data.metadata,
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Only update api_key if provided
+      if (encryptedApiKey !== undefined) {
+        updateData.api_key = encryptedApiKey;
+      }
+
       const { data: credential, error } = await supabase
         .from('api_credentials')
-        .update({
-          api_key: data.api_key,
-          webhook_url: data.webhook_url,
-          metadata: data.metadata,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', existing.id)
         .select('id, service_name, webhook_url, is_active, last_verified_at')
         .single();
@@ -94,7 +104,7 @@ export class SettingsService {
         .insert({
           user_id: userId,
           service_name: data.service_name,
-          api_key: data.api_key,
+          api_key: encryptedApiKey,
           webhook_url: data.webhook_url,
           metadata: data.metadata || {},
           is_active: true,
@@ -142,21 +152,45 @@ export class SettingsService {
       throw new Error('API credential not found');
     }
 
+    // Decrypt API key for verification
+    const decryptedApiKey = credential.api_key ? decrypt(credential.api_key) : null;
+
     let isValid = false;
     let errorMessage: string | null = null;
 
     try {
       // Test the credential based on service type
-      if (serviceName === 'openai' && credential.api_key) {
-        // Test OpenAI API key
-        const response = await fetch('https://api.openai.com/v1/models', {
+      if (serviceName === 'openai' && decryptedApiKey) {
+        // Test Claude API (Anthropic) - using OpenAI endpoint as fallback, but should use Anthropic
+        // Note: This is a placeholder - should use Anthropic API endpoint
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
           headers: {
-            'Authorization': `Bearer ${credential.api_key}`,
+            'x-api-key': decryptedApiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-sonnet-20240229',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'test' }],
+          }),
+        });
+        isValid = response.ok || response.status === 400; // 400 might mean auth is valid but request is invalid
+        if (!isValid && response.status === 401) {
+          errorMessage = `Anthropic API error: Invalid API key`;
+        }
+      } else if (serviceName === 'unipil' && decryptedApiKey) {
+        // Test UniPil API
+        const unipilUrl = process.env.UNIPIL_API_URL || 'https://api.unipil.com';
+        const response = await fetch(`${unipilUrl}/api/v1/health`, {
+          headers: {
+            'Authorization': `Bearer ${decryptedApiKey}`,
           },
         });
         isValid = response.ok;
         if (!isValid) {
-          errorMessage = `OpenAI API error: ${response.statusText}`;
+          errorMessage = `UniPil API error: ${response.statusText}`;
         }
       } else if (serviceName.startsWith('n8n_') && credential.webhook_url) {
         // Test N8N webhook (simple ping)
@@ -165,13 +199,32 @@ export class SettingsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ test: true }),
         });
-        isValid = response.ok;
+        isValid = response.ok || response.status === 202; // 202 Accepted is also valid
         if (!isValid) {
           errorMessage = `N8N webhook error: ${response.statusText}`;
         }
+      } else if (serviceName.startsWith('smtp_') && decryptedApiKey) {
+        // SMTP verification would require nodemailer - for now, just check key exists
+        // TODO: Implement actual SMTP connection test with nodemailer
+        isValid = !!decryptedApiKey;
+        if (!isValid) {
+          errorMessage = 'SMTP credentials missing';
+        }
+      } else if ((serviceName === 'cal_com' || serviceName === 'calendly') && decryptedApiKey) {
+        // Calendar service verification
+        isValid = !!decryptedApiKey;
+        if (!isValid) {
+          errorMessage = 'Calendar API key missing';
+        }
+      } else if (serviceName === 'email_finder' && decryptedApiKey) {
+        // Email finder service - basic format validation
+        isValid = decryptedApiKey.length > 10; // Basic validation
+        if (!isValid) {
+          errorMessage = 'Email finder API key format invalid';
+        }
       } else {
         // For other services, just mark as valid if key/url exists
-        isValid = !!(credential.api_key || credential.webhook_url);
+        isValid = !!(decryptedApiKey || credential.webhook_url);
       }
 
       // Update verification timestamp

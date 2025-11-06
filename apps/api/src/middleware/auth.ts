@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyToken, ensureUserExists } from '../lib/supabase';
 import { ApiError, ErrorCode } from '../types';
+import { setSentryUser } from '../lib/sentry';
 
 /**
  * Auth middleware - Verify JWT token and attach user to request
@@ -36,6 +37,9 @@ export async function authMiddleware(
 
     // Ensure user exists in users table
     await ensureUserExists(userInfo.userId, userInfo.email);
+
+    // Set Sentry user context for error tracking
+    setSentryUser(userInfo.userId, userInfo.email);
 
     // Attach user to request for downstream handlers
     (request as any).user = userInfo;

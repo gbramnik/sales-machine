@@ -1,74 +1,94 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Search, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useOnboardingIndustries } from '@/hooks/useOnboardingIndustries'
+import { useOnboardingICP } from '@/hooks/useOnboardingICP'
+import type { ICPConfig } from '@/hooks/useOnboarding'
 
 interface Step2IndustryProps {
   selectedIndustry: string | null
   onSelectIndustry: (industry: string) => void
   onNext: () => void
   onBack: () => void
+  onSaveIndustry: (industry: string) => Promise<any>
+  onSaveICP?: (icpConfig: ICPConfig) => Promise<void>
+  isLoading?: boolean
 }
-
-const industries = [
-  { id: 'saas', name: 'SaaS & Cloud Software', emoji: '💻' },
-  { id: 'marketing', name: 'Marketing Agencies', emoji: '📊' },
-  { id: 'consulting', name: 'Consulting & Professional Services', emoji: '💼' },
-  { id: 'ecommerce', name: 'E-Commerce & Retail', emoji: '🛒' },
-  { id: 'finance', name: 'Financial Services', emoji: '💰' },
-  { id: 'healthcare', name: 'Healthcare & Medical', emoji: '🏥' },
-  { id: 'realestate', name: 'Real Estate', emoji: '🏠' },
-  { id: 'manufacturing', name: 'Manufacturing', emoji: '🏭' },
-  { id: 'education', name: 'Education & EdTech', emoji: '🎓' },
-  { id: 'hospitality', name: 'Hospitality & Tourism', emoji: '🏨' },
-  { id: 'construction', name: 'Construction & Engineering', emoji: '🏗️' },
-  { id: 'legal', name: 'Legal Services', emoji: '⚖️' },
-  { id: 'logistics', name: 'Logistics & Transportation', emoji: '🚚' },
-  { id: 'nonprofit', name: 'Non-Profit', emoji: '🤝' },
-  { id: 'media', name: 'Media & Entertainment', emoji: '🎬' },
-  { id: 'technology', name: 'Technology Services', emoji: '⚙️' },
-  { id: 'design', name: 'Design & Creative', emoji: '🎨' },
-  { id: 'hr', name: 'HR & Recruiting', emoji: '👥' },
-  { id: 'insurance', name: 'Insurance', emoji: '🛡️' },
-  { id: 'other', name: 'Other', emoji: '📋' },
-]
 
 export const Step2Industry: React.FC<Step2IndustryProps> = ({
   selectedIndustry,
   onSelectIndustry,
   onNext,
   onBack,
+  onSaveIndustry,
+  onSaveICP,
+  isLoading = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [icpConfig, setIcpConfig] = useState<ICPConfig | null>(null)
+  const [editedICP, setEditedICP] = useState<ICPConfig | null>(null)
+
+  const { industries, isLoading: industriesLoading } = useOnboardingIndustries()
+  const { suggestions, isLoading: suggestionsLoading } = useOnboardingICP(selectedIndustry || undefined)
+
+  useEffect(() => {
+    if (suggestions) {
+      setIcpConfig(suggestions)
+      setEditedICP(suggestions)
+    }
+  }, [suggestions])
 
   const filteredIndustries = industries.filter((industry) =>
-    industry.name.toLowerCase().includes(searchQuery.toLowerCase())
+    industry.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const getICPRecommendations = () => {
-    const recommendations: Record<string, any> = {
-      saas: {
-        jobTitles: 'VP of Marketing, CMO, Marketing Director',
-        companySize: '50-500 employees',
-        locations: 'France, Belgium, Switzerland',
-      },
-      marketing: {
-        jobTitles: 'Founder, CEO, VP of Sales',
-        companySize: '10-100 employees',
-        locations: 'France, Belgium, Switzerland',
-      },
-    }
-
-    return recommendations[selectedIndustry || ''] || {
-      jobTitles: 'C-level, VP level',
-      companySize: '50-200 employees',
-      locations: 'France, Belgium, Switzerland',
+  const handleSelectIndustry = async (industry: string) => {
+    onSelectIndustry(industry)
+    
+    try {
+      setIsSaving(true)
+      const icpSuggestions = await onSaveIndustry(industry)
+      if (icpSuggestions) {
+        setIcpConfig(icpSuggestions)
+        setEditedICP(icpSuggestions)
+      }
+    } catch (error) {
+      console.error('Failed to save industry:', error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const recommendations = getICPRecommendations()
+  const handleNext = async () => {
+    if (!selectedIndustry) return
+    
+    try {
+      setIsSaving(true)
+      // Save ICP config if edited
+      if (onSaveICP && editedICP) {
+        await onSaveICP(editedICP)
+      }
+      onNext()
+    } catch (error) {
+      console.error('Failed to save ICP config:', error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const recommendations = editedICP ? {
+    jobTitles: editedICP.job_titles?.join(', ') || 'Not specified',
+    companySize: editedICP.company_sizes?.join(', ') || 'Not specified',
+    locations: editedICP.locations?.join(', ') || 'Not specified',
+  } : {
+    jobTitles: 'Loading...',
+    companySize: 'Loading...',
+    locations: 'Loading...',
+  }
 
   return (
     <div className="space-y-8">
@@ -97,15 +117,19 @@ export const Step2Industry: React.FC<Step2IndustryProps> = ({
       </div>
 
       {/* Industry Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {filteredIndustries.map((industry) => {
-          const isSelected = selectedIndustry === industry.id
+      {industriesLoading ? (
+        <div className="text-center text-gray-500 py-8">Loading industries...</div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredIndustries.map((industry) => {
+            const isSelected = selectedIndustry === industry
 
-          return (
-            <button
-              key={industry.id}
-              onClick={() => onSelectIndustry(industry.id)}
-              className={cn(
+            return (
+              <button
+                key={industry}
+                onClick={() => handleSelectIndustry(industry)}
+                disabled={isSaving || isLoading}
+                className={cn(
                 "relative h-24 rounded-lg border-2 bg-white p-3 transition-all duration-200",
                 "flex flex-col items-center justify-center gap-2",
                 "hover:shadow-md hover:scale-105",
@@ -119,17 +143,21 @@ export const Step2Industry: React.FC<Step2IndustryProps> = ({
                   <Check className="w-3 h-3 text-white" />
                 </div>
               )}
-              <span className="text-2xl">{industry.emoji}</span>
               <span className="text-xs font-medium text-gray-900 text-center leading-tight">
-                {industry.name}
+                {industry}
               </span>
             </button>
           )
         })}
       </div>
+      )}
 
       {/* ICP Preview Panel */}
-      {selectedIndustry && (
+      {selectedIndustry && (suggestionsLoading ? (
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 text-center text-gray-500">
+          Loading ICP suggestions...
+        </div>
+      ) : editedICP ? (
         <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 space-y-4 animate-fade-in">
           <h3 className="text-lg font-semibold text-gray-900">
             Based on your selection, we recommend targeting:
@@ -146,36 +174,58 @@ export const Step2Industry: React.FC<Step2IndustryProps> = ({
             {showAdvanced ? 'Hide' : 'Edit Recommendations'}
           </button>
 
-          {showAdvanced && (
+          {showAdvanced && editedICP && (
             <div className="space-y-4 pt-4 border-t border-primary-200 animate-slide-down">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Job Titles
+                  Job Titles (comma-separated)
                 </label>
-                <Input placeholder="VP of Marketing, CMO, Marketing Director" />
+                <Input 
+                  placeholder="VP of Marketing, CMO, Marketing Director" 
+                  value={editedICP.job_titles?.join(', ') || ''}
+                  onChange={(e) => setEditedICP({
+                    ...editedICP,
+                    job_titles: e.target.value.split(',').map(s => s.trim()).filter(Boolean),
+                  })}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Company Size
                 </label>
-                <select className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                  <option>1-10 employees</option>
-                  <option>10-50 employees</option>
-                  <option selected>50-200 employees</option>
-                  <option>200-1000 employees</option>
-                  <option>1000+ employees</option>
+                <select 
+                  className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  value={editedICP.company_sizes?.[0] || ''}
+                  onChange={(e) => setEditedICP({
+                    ...editedICP,
+                    company_sizes: e.target.value ? [e.target.value] : [],
+                  })}
+                >
+                  <option value="">Select company size</option>
+                  <option value="1-10">1-10 employees</option>
+                  <option value="11-50">11-50 employees</option>
+                  <option value="51-200">51-200 employees</option>
+                  <option value="201-500">201-500 employees</option>
+                  <option value="500+">500+ employees</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Locations
+                  Locations (comma-separated)
                 </label>
-                <Input placeholder="France, Belgium, Switzerland" />
+                <Input 
+                  placeholder="France, Belgium, Switzerland" 
+                  value={editedICP.locations?.join(', ') || ''}
+                  onChange={(e) => setEditedICP({
+                    ...editedICP,
+                    locations: e.target.value.split(',').map(s => s.trim()).filter(Boolean),
+                  })}
+                />
               </div>
             </div>
           )}
         </div>
-      )}
+      ) : null)}
 
       {/* Navigation Buttons */}
       <div className="flex justify-between">
@@ -187,12 +237,12 @@ export const Step2Industry: React.FC<Step2IndustryProps> = ({
           Back
         </Button>
         <Button
-          onClick={onNext}
-          disabled={!selectedIndustry}
+          onClick={handleNext}
+          disabled={!selectedIndustry || isSaving || isLoading}
           size="lg"
           className="min-w-[140px]"
         >
-          Continue
+          {isSaving ? 'Saving...' : 'Continue'}
         </Button>
       </div>
     </div>

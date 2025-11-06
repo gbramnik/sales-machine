@@ -9,10 +9,13 @@ interface Step5ReviewProps {
     industry: string
     domain: string
     calendar: string
+    icpConfig?: any
   }
   onActivate: () => void
   onBack: () => void
   onEdit: (step: number) => void
+  onCompleteOnboarding: () => Promise<any>
+  isLoading?: boolean
 }
 
 const goalLabels: Record<string, string> = {
@@ -33,17 +36,26 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
   onActivate,
   onBack,
   onEdit,
+  onCompleteOnboarding,
+  isLoading = false,
 }) => {
   const [isActivating, setIsActivating] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   const handleActivate = async () => {
+    if (!agreedToTerms) return
+    
     setIsActivating(true)
     
-    // Simulate activation
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    onActivate()
+    try {
+      await onCompleteOnboarding()
+      onActivate()
+    } catch (error) {
+      console.error('Failed to complete onboarding:', error)
+      // Optionally show error toast
+    } finally {
+      setIsActivating(false)
+    }
   }
 
   return (
@@ -92,9 +104,19 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
                 <h4 className="font-medium text-gray-900 mb-2">Target Audience</h4>
                 <div className="space-y-1 text-sm">
                   <p><span className="text-gray-600">Industry:</span> <span className="text-gray-900">{industryLabels[data.industry] || data.industry}</span></p>
-                  <p><span className="text-gray-600">Job Titles:</span> <span className="text-gray-900">VP Marketing, CMO, Marketing Director</span></p>
-                  <p><span className="text-gray-600">Company Size:</span> <span className="text-gray-900">50-500 employees</span></p>
-                  <p><span className="text-gray-600">Locations:</span> <span className="text-gray-900">France, Belgium, Switzerland</span></p>
+                  {data.icpConfig && (
+                    <>
+                      {data.icpConfig.job_titles && (
+                        <p><span className="text-gray-600">Job Titles:</span> <span className="text-gray-900">{data.icpConfig.job_titles.join(', ')}</span></p>
+                      )}
+                      {data.icpConfig.company_sizes && (
+                        <p><span className="text-gray-600">Company Size:</span> <span className="text-gray-900">{data.icpConfig.company_sizes.join(', ')}</span></p>
+                      )}
+                      {data.icpConfig.locations && (
+                        <p><span className="text-gray-600">Locations:</span> <span className="text-gray-900">{data.icpConfig.locations.join(', ')}</span></p>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               <button
@@ -217,7 +239,7 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
 
           <Button
             onClick={handleActivate}
-            disabled={!agreedToTerms || isActivating}
+            disabled={!agreedToTerms || isActivating || isLoading}
             size="lg"
             className="w-full h-14 text-lg"
           >

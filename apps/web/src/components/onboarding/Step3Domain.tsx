@@ -9,6 +9,8 @@ interface Step3DomainProps {
   onDomainChange: (domain: string) => void
   onNext: () => void
   onBack: () => void
+  onVerifyDomain: (domain: string) => Promise<any>
+  isLoading?: boolean
 }
 
 interface DNSRecord {
@@ -22,26 +24,39 @@ export const Step3Domain: React.FC<Step3DomainProps> = ({
   onDomainChange,
   onNext,
   onBack,
+  onVerifyDomain,
+  isLoading = false,
 }) => {
   const [isChecking, setIsChecking] = useState(false)
   const [hasChecked, setHasChecked] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
   const [dnsRecords, setDnsRecords] = useState<DNSRecord[]>([])
+  const [verificationResult, setVerificationResult] = useState<any>(null)
 
   const handleCheckDNS = async () => {
+    if (!domain) return
+    
     setIsChecking(true)
     
-    // Simulate DNS check
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    setDnsRecords([
-      { type: 'SPF Record', status: 'verified', name: 'spf' },
-      { type: 'DKIM Record', status: 'verified', name: 'dkim' },
-      { type: 'DMARC Record', status: 'failed', name: 'dmarc' },
-    ])
-    
-    setIsChecking(false)
-    setHasChecked(true)
+    try {
+      const result = await onVerifyDomain(domain)
+      setVerificationResult(result)
+      
+      // Transform verification result to DNS records format
+      const records: DNSRecord[] = [
+        { type: 'SPF Record', status: result.checks?.spf ? 'verified' : 'failed', name: 'spf' },
+        { type: 'DKIM Record', status: result.checks?.dkim ? 'verified' : 'failed', name: 'dkim' },
+        { type: 'DMARC Record', status: result.checks?.dmarc ? 'verified' : 'failed', name: 'dmarc' },
+      ]
+      
+      setDnsRecords(records)
+      setHasChecked(true)
+    } catch (error) {
+      console.error('Failed to verify domain:', error)
+      // Optionally show error toast
+    } finally {
+      setIsChecking(false)
+    }
   }
 
   const copyToClipboard = (text: string) => {
@@ -79,7 +94,7 @@ export const Step3Domain: React.FC<Step3DomainProps> = ({
 
         <Button
           onClick={handleCheckDNS}
-          disabled={!domain || isChecking}
+          disabled={!domain || isChecking || isLoading}
           className="w-full"
           size="lg"
         >
@@ -218,7 +233,7 @@ export const Step3Domain: React.FC<Step3DomainProps> = ({
           )}
           <Button
             onClick={onNext}
-            disabled={!hasChecked || (!allVerified && !hasChecked)}
+            disabled={!hasChecked || (!allVerified && !hasChecked) || isLoading}
             size="lg"
             className="min-w-[140px]"
           >

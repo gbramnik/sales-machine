@@ -1,0 +1,218 @@
+{
+  "name": "Monitoring - N8N Workflow Execution",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.N8N_BASE_URL || 'https://n8n.srv997159.hstgr.cloud' }}/api/v1/executions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $env.N8N_API_KEY }}"
+            }
+          ]
+        },
+        "qs": {
+          "filter": "={{ JSON.stringify({ finished: true, since: $now.minus({ hours: 1 }).toISO() }) }}"
+        },
+        "options": {}
+      },
+      "id": "query-executions",
+      "name": "Query N8N Executions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate failure rate from executions\nconst executions = $input.item.json.data || [];\nconst total = executions.length;\nconst failed = executions.filter(e => e.finished === false || e.stoppedAt !== null).length;\nconst failureRate = total > 0 ? (failed / total) * 100 : 0;\n\n// Get top 3 failed workflows\nconst failedWorkflows = executions\n  .filter(e => e.finished === false || e.stoppedAt !== null)\n  .slice(0, 3)\n  .map(e => ({\n    workflow: e.workflowId || 'unknown',\n    error: e.data?.resultData?.error?.message?.substring(0, 100) || 'Unknown error'\n  }));\n\nreturn {\n  json: {\n    total_executions: total,\n    failed_executions: failed,\n    failure_rate: failureRate.toFixed(2),\n    top_failed_workflows: failedWorkflows,\n    timestamp: $now.toISO()\n  }\n};"
+      },
+      "id": "calculate-metrics",
+      "name": "Calculate Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-failure-rate",
+              "leftValue": "={{ Number($json.failure_rate) }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-threshold",
+      "name": "If Failure Rate > 10%",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "⚠️ N8N Workflow Failure Rate: {{ $json.failure_rate }}% (threshold: 10%) - Failed: {{ $json.failed_executions }} / Total: {{ $json.total_executions }}\nTop failed workflows:\n{{ $json.top_failed_workflows.map(w => `- ${w.workflow}: ${w.error}`).join('\\n') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-slack-alert",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/workflow_execution_metrics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "total_executions",
+              "value": "={{ $json.total_executions }}"
+            },
+            {
+              "name": "failed_executions",
+              "value": "={{ $json.failed_executions }}"
+            },
+            {
+              "name": "failure_rate",
+              "value": "={{ $json.failure_rate }}"
+            },
+            {
+              "name": "top_failed_workflows",
+              "value": "={{ JSON.stringify($json.top_failed_workflows) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "store-metrics",
+      "name": "Store Metrics in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query N8N Executions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query N8N Executions": {
+      "main": [
+        [
+          {
+            "node": "Calculate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Metrics": {
+      "main": [
+        [
+          {
+            "node": "If Failure Rate > 10%",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Metrics in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Failure Rate > 10%": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "monitoring-workflow-execution"
+}
+

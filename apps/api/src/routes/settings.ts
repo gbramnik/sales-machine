@@ -6,18 +6,26 @@ import { z } from 'zod';
 // Validation schemas
 const saveApiCredentialSchema = z.object({
   service_name: z.enum([
-    'openai',
-    'unipil',
+    'openai', // Claude API (Anthropic)
+    'unipil', // UniPil API (LinkedIn automation)
+    'smtp_mailgun', // SMTP Mailgun provider
+    'smtp_sendgrid', // SMTP SendGrid provider
+    'smtp_ses', // AWS SES SMTP provider
+    'email_finder', // Email Finder API (Anymail/Better Contacts)
+    'cal_com', // Cal.com calendar service
+    'calendly', // Calendly calendar service
+    'n8n_linkedin_scrape', // N8N webhook for LinkedIn scraping
+    'n8n_ai_enrichment', // N8N webhook for AI enrichment
+    'n8n_email_send', // N8N webhook for email sending
+    'n8n_email_reply', // N8N webhook for email reply handling
+    'n8n_daily_detection', // N8N webhook for daily prospect detection
+    'n8n_warmup', // N8N webhook for warm-up workflow
+    'n8n_connection', // N8N webhook for connection trigger
+    'n8n_ai_conversation', // N8N webhook for AI conversation workflow
+    // Deprecated services (kept for backward compatibility)
     'instantly',
     'smartlead',
-    'calendly',
-    'calcom',
-    'cal_com', // Cal.com calendar service
-    'n8n_linkedin_scrape',
-    'n8n_ai_enrichment',
-    'n8n_email_send',
-    'n8n_email_reply',
-    'smtp_mailgun', // SMTP Mailgun provider
+    'calcom', // Alias for cal_com
   ]),
   api_key: z.string().min(1).optional(),
   webhook_url: z.string().url().optional(),
@@ -295,11 +303,14 @@ export async function settingsRoutes(server: FastifyInstance) {
     ]);
 
     return reply.send({
-      api_credentials: credentials,
-      icp,
-      email,
-      ai,
-      detection,
+      success: true,
+      data: {
+        api_credentials: credentials,
+        icp,
+        email,
+        ai,
+        detection,
+      },
     });
   });
 }

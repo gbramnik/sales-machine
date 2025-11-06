@@ -8,6 +8,8 @@ interface Step4CalendarProps {
   onConnectCalendar: (provider: string) => void
   onNext: () => void
   onBack: () => void
+  onConnectCalendarOAuth: (provider: 'google' | 'outlook') => Promise<void>
+  isLoading?: boolean
 }
 
 const calendarProviders = [
@@ -20,8 +22,11 @@ export const Step4Calendar: React.FC<Step4CalendarProps> = ({
   onConnectCalendar,
   onNext,
   onBack,
+  onConnectCalendarOAuth,
+  isLoading = false,
 }) => {
   const [showSettings, setShowSettings] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [availability, setAvailability] = useState({
     days: 'Mon-Fri',
     hours: '9:00 AM - 5:00 PM EST',
@@ -29,9 +34,15 @@ export const Step4Calendar: React.FC<Step4CalendarProps> = ({
     buffer: '15',
   })
 
-  const handleConnect = (provider: string) => {
-    // Simulate OAuth flow
-    onConnectCalendar(provider)
+  const handleConnect = async (provider: 'google' | 'outlook') => {
+    try {
+      setIsConnecting(true)
+      await onConnectCalendarOAuth(provider)
+      // OAuth will redirect, so we don't need to update state here
+    } catch (error) {
+      console.error('Failed to initiate calendar OAuth:', error)
+      setIsConnecting(false)
+    }
   }
 
   return (
@@ -64,8 +75,16 @@ export const Step4Calendar: React.FC<Step4CalendarProps> = ({
                 <span className="text-base font-medium text-gray-900">
                   {provider.name}
                 </span>
-                <Button size="sm" className="mt-2">
-                  Connect
+                <Button 
+                  size="sm" 
+                  className="mt-2"
+                  disabled={isConnecting || isLoading}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleConnect(provider.id as 'google' | 'outlook')
+                  }}
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect'}
                 </Button>
               </button>
             ))}
@@ -193,7 +212,7 @@ export const Step4Calendar: React.FC<Step4CalendarProps> = ({
         </Button>
         <Button
           onClick={onNext}
-          disabled={!connectedCalendar}
+          disabled={!connectedCalendar || isLoading}
           size="lg"
           className="min-w-[140px]"
         >

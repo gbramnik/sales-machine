@@ -35,10 +35,19 @@ JWT_SECRET=your-secret-key-here     # Generate with: openssl rand -base64 32
 
 ## Optional Variables
 
-### Monitoring
+### Monitoring (Story 6.1)
 ```bash
-SENTRY_DSN=https://xxx@sentry.io/xxx    # Error tracking
+SENTRY_DSN=https://xxx@sentry.io/xxx           # Backend error tracking
+SENTRY_DSN_FRONTEND=https://xxx@sentry.io/xxx   # Frontend error tracking
+SENTRY_ENVIRONMENT=development                   # development | staging | production
+SLACK_WEBHOOK_URL=https://hooks.slack.com/xxx   # Slack alerts webhook
+N8N_API_KEY=xxx                                  # N8N API key for workflow monitoring
+N8N_BASE_URL=https://n8n.srv997159.hstgr.cloud  # N8N instance URL
+UPSTASH_API_KEY=xxx                              # Upstash REST API key for usage metrics
+ADMIN_EMAIL=admin@sales-machine.com             # Admin email for cost reports
 ```
+
+**Note:** `SUPABASE_SERVICE_KEY` is used for Supabase API access (already exists in Required Variables section above).
 
 ## Notes
 

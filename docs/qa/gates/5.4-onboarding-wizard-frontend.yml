@@ -1,0 +1,170 @@
+# Quality Gate Decision
+# Story 5.4: Onboarding Wizard (Frontend)
+# Reviewed by Quinn (Test Architect)
+
+schema: 1
+story: "5.4"
+story_title: "Onboarding Wizard (Frontend)"
+gate: CONCERNS
+status_reason: "Complete implementation of OnboardingWizard component with all 5 steps, hooks, and API integration. All core components and functionality implemented. Missing: OnboardingPage wrapper component, route in App.tsx, ErrorBoundary component, unit tests. Story marked as 'In Progress' but implementation is nearly complete."
+reviewer: "Quinn"
+updated: "2025-11-06T15:31:14Z"
+
+# Waiver status
+waiver:
+  active: false
+
+# Issues identified
+top_issues:
+  - id: "ROUTE-001"
+    severity: high
+    finding: "Route not added to App.tsx (Task 1) - OnboardingPage component and /onboarding route missing"
+    suggested_action: "Create OnboardingPage.tsx wrapper component and add route in App.tsx: <Route path=\"/onboarding\" element={<OnboardingPage />} />"
+    suggested_owner: "dev"
+  - id: "ERROR-001"
+    severity: medium
+    finding: "Error Boundary not implemented (Task 11) - No React Error Boundary component to catch errors"
+    suggested_action: "Create ErrorBoundary component and wrap OnboardingWizard in it"
+    suggested_owner: "dev"
+  - id: "TEST-001"
+    severity: medium
+    finding: "Unit tests not created (Task 13) - No test files for components or hooks"
+    suggested_action: "Create unit tests for Step components and useOnboarding hooks"
+    suggested_owner: "dev"
+
+# Risk summary
+risk_summary:
+  totals:
+    critical: 0
+    high: 1
+    medium: 2
+    low: 0
+  recommendations:
+    must_fix:
+      - "Add OnboardingPage component and route in App.tsx to make wizard accessible"
+    monitor:
+      - "Add ErrorBoundary component for better error handling"
+      - "Create unit tests for components and hooks"
+
+# Quality metrics
+quality_score: 82
+expires: "2025-11-20T00:00:00Z"
+
+# Evidence
+evidence:
+  tests_reviewed: 0
+  test_files: 0
+  risks_identified: 3
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8]
+    ac_gaps: []
+
+# Non-functional requirements validation
+nfr_validation:
+  security:
+    status: PASS
+    notes: "OnboardingWizard uses useOnboarding hook which calls protected API endpoints. Session management handled by backend. OAuth flow for calendar connection secure."
+  performance:
+    status: PASS
+    notes: "Efficient step navigation with state management. Loading states for all async operations. Session persistence prevents data loss. Smooth scroll on step transitions."
+  reliability:
+    status: CONCERNS
+    notes: "Error handling in hooks but no ErrorBoundary component. Session auto-resume on page load. OAuth callback handling implemented. Missing error boundary for component-level errors."
+  maintainability:
+    status: PASS
+    notes: "Well-structured component hierarchy. Custom hooks for API integration. Reusable Step components. Clear separation of concerns. TypeScript types defined."
+
+# Recommendations
+recommendations:
+  immediate:
+    - action: "Create OnboardingPage.tsx wrapper component"
+      refs: ["docs/stories/5.4.onboarding-wizard-frontend.md:32-48"]
+    - action: "Add route in App.tsx: <Route path=\"/onboarding\" element={<OnboardingPage />} />"
+      refs: ["docs/stories/5.4.onboarding-wizard-frontend.md:42-44"]
+  future:
+    - action: "Create ErrorBoundary component and wrap OnboardingWizard"
+      refs: ["docs/stories/5.4.onboarding-wizard-frontend.md:248-250"]
+    - action: "Create unit tests for Step components and hooks"
+      refs: ["docs/stories/5.4.onboarding-wizard-frontend.md:262-277"]
+
+# Test coverage details
+test_coverage:
+  unit_tests:
+    components: 0
+    hooks: 0
+    total: 0
+  integration_tests: 0
+  e2e_tests: 0
+  coverage_gaps:
+    - "Component tests (Step1Welcome, Step2Industry, Step3Domain, Step4Calendar, Step5Review, OnboardingWizard)"
+    - "Hook tests (useOnboarding, useOnboardingICP, useOnboardingIndustries)"
+    - "ProgressIndicator component test"
+
+# Files reviewed
+files_reviewed:
+  - "apps/web/src/components/onboarding/OnboardingWizard.tsx"
+  - "apps/web/src/components/onboarding/Step1Welcome.tsx"
+  - "apps/web/src/components/onboarding/Step2Industry.tsx"
+  - "apps/web/src/components/onboarding/Step3Domain.tsx"
+  - "apps/web/src/components/onboarding/Step4Calendar.tsx"
+  - "apps/web/src/components/onboarding/Step5Review.tsx"
+  - "apps/web/src/components/onboarding/ProgressIndicator.tsx"
+  - "apps/web/src/hooks/useOnboarding.ts"
+  - "apps/web/src/hooks/useOnboardingICP.ts"
+  - "apps/web/src/hooks/useOnboardingIndustries.ts"
+  - "apps/web/src/App.tsx"
+  - "docs/stories/5.4.onboarding-wizard-frontend.md"
+
+# Compliance verification
+compliance:
+  coding_standards: PASS
+  project_structure: PASS
+  testing_strategy: CONCERNS
+  documentation: PASS
+
+# Gate decision summary
+decision_summary: |
+  CONCERNS - Complete implementation with minor gaps:
+
+  ✓ Core implementation complete:
+    - OnboardingWizard: Complete with all 5 steps, progress indicator, navigation
+    - Step components: All 5 steps implemented (Step1Welcome, Step2Industry, Step3Domain, Step4Calendar, Step5Review)
+    - ProgressIndicator: Visual progress bar with step dots
+    - API hooks: useOnboarding, useOnboardingICP, useOnboardingIndustries all implemented
+    - Session persistence: Auto-resume from session, save on each step
+    - OAuth flow: Calendar connection with redirect flow (mobile-friendly)
+    - Loading states: Loading indicators for all async operations
+    - Error handling: Error states in hooks
+
+  ✓ Acceptance criteria met:
+    - AC1: Multi-step wizard UI with progress indicator ✅
+    - AC2: Conversational copy ✅
+    - AC3: Industry selection with visual cards ✅
+    - AC4: ICP preview with editable recommendations ✅
+    - AC5: Domain verification with DNS check ✅
+    - AC6: Calendar connect with OAuth ✅
+    - AC7: Final summary with activation ✅
+    - AC8: Single "Activate My AI Sales Rep" button ✅
+
+  ✓ Features:
+    - Step navigation: Back/Next buttons with validation
+    - Progress indicator: Visual progress bar showing step completion
+    - Goal selection: Visual cards with icons
+    - Industry selection: Grid of industry cards with search/filter
+    - ICP configuration: Auto-suggested ICP with editing capability
+    - Domain verification: DNS check (SPF, DKIM, DMARC) with fix instructions
+    - Calendar connection: OAuth flow for Google/Outlook
+    - Final summary: Pre-flight checklist and activation button
+    - Session persistence: Auto-resume at correct step
+    - Mobile responsive: Single column layout, full-width cards
+
+  ⚠️ Missing components (blocking):
+    - OnboardingPage.tsx wrapper component not created
+    - Route not added in App.tsx (wizard not accessible)
+
+  ⚠️ Missing features (non-blocking):
+    - ErrorBoundary component not implemented
+    - Unit tests not created
+
+  Ready for production after adding OnboardingPage and route. ErrorBoundary and tests can be added incrementally.
+

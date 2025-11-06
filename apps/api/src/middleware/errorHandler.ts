@@ -1,5 +1,7 @@
 import { FastifyError, FastifyRequest, FastifyReply } from 'fastify';
 import { ApiError, ErrorCode } from '../types';
+import { captureException, setSentryUser } from '../lib/sentry';
+import { AuthenticatedRequest } from '../types';
 
 /**
  * Global error handler middleware
@@ -16,6 +18,37 @@ export function errorHandler(
     error: error.message,
     stack: error.stack,
   });
+
+  // Capture error to Sentry with request context
+  const requestContext = {
+    method: request.method,
+    url: request.url,
+    path: request.routerPath || request.url,
+    query: request.query,
+    headers: {
+      'user-agent': request.headers['user-agent'],
+      'content-type': request.headers['content-type'],
+    },
+  };
+
+  // Set user context if authenticated
+  if ((request as any).user) {
+    const user = (request as AuthenticatedRequest).user;
+    setSentryUser(user.userId, user.email);
+  }
+
+  // Capture 4xx and 5xx errors to Sentry
+  const statusCode = 'statusCode' in error ? error.statusCode : 
+                     error instanceof ApiError ? error.statusCode : 500;
+  
+  // Only capture server errors (5xx) and critical client errors (4xx) to Sentry
+  // Skip 401/403/404 as they're expected in normal operation
+  if (statusCode >= 500 || (statusCode >= 400 && statusCode !== 401 && statusCode !== 403 && statusCode !== 404)) {
+    captureException(error instanceof Error ? error : new Error(error.message), {
+      request: requestContext,
+      statusCode,
+    });
+  }
 
   // Handle ApiError (our custom errors)
   if (error instanceof ApiError) {

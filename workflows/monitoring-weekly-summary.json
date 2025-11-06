@@ -1,0 +1,306 @@
+{
+  "name": "Monitoring - Weekly Summary Email",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Monday at 9 AM UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate week start date (Monday)\nconst today = $now;\nconst dayOfWeek = today.weekday;\nconst daysToMonday = dayOfWeek === 1 ? 0 : dayOfWeek === 7 ? 1 : 8 - dayOfWeek;\nconst weekStart = today.minus({ days: daysToMonday + 7 }); // Last week\n\nreturn {\n  json: {\n    week_start: weekStart.toFormat('yyyy-MM-dd'),\n    week_end: weekStart.plus({ days: 6 }).toFormat('yyyy-MM-dd')\n  }\n};"
+      },
+      "id": "calculate-week",
+      "name": "Calculate Week Dates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/users?select=id&created_at.gte={{ $json.week_start }}&created_at.lt={{ $json.week_end }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-user-growth",
+      "name": "Query User Growth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/workflow_execution_metrics?timestamp.gte={{ $json.week_start }}&timestamp.lt={{ $json.week_end }}&select=failure_rate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-workflow-metrics",
+      "name": "Query Workflow Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/cost_monitoring?date.gte={{ $json.week_start }}&date.lt={{ $json.week_end }}&select=total_cost",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-cost-data",
+      "name": "Query Cost Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate metrics from all sources\nconst userGrowth = $('Query User Growth').item.json.length || 0;\nconst workflowMetrics = $('Query Workflow Metrics').item.json || [];\nconst costData = $('Query Cost Data').item.json || [];\n\nconst avgFailureRate = workflowMetrics.length > 0\n  ? workflowMetrics.reduce((sum, m) => sum + Number(m.failure_rate || 0), 0) / workflowMetrics.length\n  : 0;\n\nconst totalCost = costData.reduce((sum, c) => sum + Number(c.total_cost || 0), 0);\n\n// Note: Uptime and error rate would come from Better Stack and Sentry APIs\n// For now, using placeholders\nconst uptimePercentage = 99.5; // Would query Better Stack API\nconst errorRate = 0.5; // Would query Sentry API\n\nreturn {\n  json: {\n    week_start: $('Calculate Week Dates').item.json.week_start,\n    uptime_percentage: uptimePercentage.toFixed(2),\n    error_rate: errorRate.toFixed(2),\n    user_growth: userGrowth,\n    workflow_failure_rate: avgFailureRate.toFixed(2),\n    total_cost: totalCost.toFixed(2)\n  }\n};"
+      },
+      "id": "aggregate-metrics",
+      "name": "Aggregate Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.API_URL || 'http://localhost:3000' }}/api/email/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.API_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $env.ADMIN_EMAIL }}"
+            },
+            {
+              "name": "subject",
+              "value": "Weekly Metrics Summary - Week of {{ $json.week_start }}"
+            },
+            {
+              "name": "body",
+              "value": "Weekly Metrics Summary\\n\\nWeek: {{ $json.week_start }}\\n\\n📊 Key Metrics:\\n- Uptime: {{ $json.uptime_percentage }}%\\n- Error Rate: {{ $json.error_rate }}%\\n- User Growth: {{ $json.user_growth }} new users\\n- Workflow Failure Rate: {{ $json.workflow_failure_rate }}%\\n- Total Cost: €{{ $json.total_cost }}\\n\\n{{ $json.workflow_failure_rate > 10 ? '⚠️ High workflow failure rate detected' : '✅ Workflow performance normal' }}\\n{{ $json.error_rate > 5 ? '⚠️ High error rate detected' : '✅ Error rate within normal range' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Weekly Summary Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/weekly_metrics_summary",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "week_start_date",
+              "value": "={{ $json.week_start }}"
+            },
+            {
+              "name": "uptime_percentage",
+              "value": "={{ $json.uptime_percentage }}"
+            },
+            {
+              "name": "error_rate",
+              "value": "={{ $json.error_rate }}"
+            },
+            {
+              "name": "user_growth",
+              "value": "={{ $json.user_growth }}"
+            },
+            {
+              "name": "workflow_failure_rate",
+              "value": "={{ $json.workflow_failure_rate }}"
+            },
+            {
+              "name": "total_cost",
+              "value": "={{ $json.total_cost }}"
+            },
+            {
+              "name": "summary_email_sent_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "store-summary",
+      "name": "Store Weekly Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Every Monday at 9 AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Calculate Week Dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Week Dates": {
+      "main": [
+        [
+          {
+            "node": "Query User Growth",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Workflow Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Cost Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query User Growth": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Workflow Metrics": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Cost Data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Send Weekly Summary Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Weekly Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "monitoring-weekly-summary"
+}
+

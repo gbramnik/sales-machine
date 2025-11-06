@@ -1,12 +1,16 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { HealthScoreCard } from '../HealthScoreCard'
 import { MetricCard } from './MetricCard'
 import { PipelineKanban } from '../PipelineKanban'
 import { AIActivityStream } from '../AIActivityStream'
 import { AlertCenter } from './AlertCenter'
 import { Calendar, Users, Mail } from 'lucide-react'
+import { useDashboardStats } from '@/hooks/useDashboardStats'
+import { usePipeline } from '@/hooks/usePipeline'
+import { useActivityStream } from '@/hooks/useActivityStream'
+import { useAlerts } from '@/hooks/useAlerts'
 
-// Mock data
+// Mock data fallback
 const mockHealthScore = {
   score: 92,
   trend: 'up' as const,
@@ -171,11 +175,15 @@ const mockAlerts = [
 ]
 
 export const Dashboard: React.FC = () => {
-  const [alerts, setAlerts] = useState(mockAlerts)
+  const { stats, isLoading: statsLoading } = useDashboardStats()
+  const { stages: pipelineStages, isLoading: pipelineLoading } = usePipeline()
+  const { activities, isLoading: activitiesLoading } = useActivityStream(true) // Enable live updates
+  const { alerts, dismissAlert, isLoading: alertsLoading } = useAlerts()
 
-  const handleDismissAlert = (alertId: string) => {
-    setAlerts(alerts.filter((alert) => alert.id !== alertId))
-  }
+  // Use real data if available, otherwise fall back to mock data
+  const healthScore = stats?.healthScore || mockHealthScore
+  const stages = pipelineStages.length > 0 ? pipelineStages : mockPipelineStages
+  const activitiesData = activities.length > 0 ? activities : mockActivities
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -211,7 +219,11 @@ export const Dashboard: React.FC = () => {
       <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
         {/* Key Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <HealthScoreCard {...mockHealthScore} />
+          {statsLoading ? (
+            <div className="col-span-1">Loading...</div>
+          ) : (
+            <HealthScoreCard {...healthScore} />
+          )}
           
           <MetricCard
             title="Meetings This Week"
@@ -266,21 +278,46 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Pipeline Section */}
-        <PipelineKanban
-          stages={mockPipelineStages}
-          onProspectClick={(id) => console.log('Clicked prospect:', id)}
-        />
+        {pipelineLoading ? (
+          <div className="text-center py-8">Loading pipeline...</div>
+        ) : (
+          <PipelineKanban
+            stages={stages}
+            onProspectClick={(id) => console.log('Clicked prospect:', id)}
+          />
+        )}
 
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* AI Activity Stream - 2 columns */}
           <div className="lg:col-span-2">
-            <AIActivityStream activities={mockActivities} enableLiveUpdates={true} />
+            {activitiesLoading ? (
+              <div className="text-center py-8">Loading activity stream...</div>
+            ) : (
+              <AIActivityStream activities={activitiesData} enableLiveUpdates={true} />
+            )}
           </div>
 
           {/* Alert Center - 1 column */}
           <div>
-            <AlertCenter alerts={alerts} onDismiss={handleDismissAlert} />
+            {alertsLoading ? (
+              <div className="text-center py-8">Loading alerts...</div>
+            ) : (
+              <AlertCenter alerts={alerts.map(alert => ({
+                id: alert.id,
+                type: alert.type === 'deliverability' ? 'warning' 
+                  : alert.type === 'vip_review' ? 'action'
+                  : alert.type === 'meeting_booked' ? 'success'
+                  : 'info',
+                title: alert.title,
+                description: alert.message,
+                timestamp: alert.timestamp,
+                action: alert.actionUrl ? {
+                  label: 'View Details',
+                  onClick: () => window.location.href = alert.actionUrl!,
+                } : undefined,
+              }))} onDismiss={dismissAlert} />
+            )}
           </div>
         </div>
       </div>

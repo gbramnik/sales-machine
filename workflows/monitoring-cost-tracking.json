@@ -1,0 +1,333 @@
+{
+  "name": "Monitoring - Cost Tracking",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 9 AM UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Query Claude API usage from database\n// This node would query the ai_conversation_log table\n// For now, return placeholder structure\nreturn {\n  json: {\n    claude_tokens: 0, // Would be calculated from ai_conversation_log\n    claude_cost: 0.0,\n    date: $now.toFormat('yyyy-MM-dd')\n  }\n};"
+      },
+      "id": "query-claude-usage",
+      "name": "Query Claude Usage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.upstash.com/v2/usage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.UPSTASH_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-upstash-usage",
+      "name": "Query Upstash Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/get_database_size",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-supabase-usage",
+      "name": "Query Supabase Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate costs and check thresholds\nconst claudeData = $('Query Claude Usage').item.json;\nconst upstashData = $('Query Upstash Usage').item.json || {};\nconst supabaseData = $('Query Supabase Usage').item.json || {};\n\n// Estimate costs (pricing may vary)\nconst claudeCost = claudeData.claude_cost || 0;\nconst upstashCost = (upstashData.commands || 0) * 0.0001; // Example pricing\nconst supabaseCost = (supabaseData.size_gb || 0) * 0.025; // Example pricing\nconst totalCost = claudeCost + upstashCost + supabaseCost;\n\n// Check thresholds\nconst thresholds = {\n  supabase: 100, // €100/month\n  upstash: 50, // €50/month\n  claude: 50 // €50/day\n};\n\nconst alerts = [];\nif (supabaseCost > thresholds.supabase) {\n  alerts.push({ service: 'Supabase', current: supabaseCost, threshold: thresholds.supabase });\n}\nif (upstashCost > thresholds.upstash) {\n  alerts.push({ service: 'Upstash', current: upstashCost, threshold: thresholds.upstash });\n}\nif (claudeCost > thresholds.claude) {\n  alerts.push({ service: 'Claude API', current: claudeCost, threshold: thresholds.claude });\n}\n\nreturn {\n  json: {\n    date: claudeData.date,\n    supabase_cost: supabaseCost.toFixed(2),\n    upstash_cost: upstashCost.toFixed(2),\n    claude_cost: claudeCost.toFixed(2),\n    total_cost: totalCost.toFixed(2),\n    alerts_sent: alerts,\n    alerts: alerts.length > 0\n  }\n};"
+      },
+      "id": "calculate-costs",
+      "name": "Calculate Costs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-alerts",
+              "leftValue": "={{ $json.alerts }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-thresholds",
+      "name": "If Thresholds Exceeded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.alerts_sent.map(a => `💰 Cost Alert: ${a.service} exceeded budget threshold - Current: €${a.current}, Threshold: €${a.threshold}`).join('\\n') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-slack-alert",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.API_URL || 'http://localhost:3000' }}/api/email/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.API_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $env.ADMIN_EMAIL }}"
+            },
+            {
+              "name": "subject",
+              "value": "Daily Cost Report - {{ $json.date }}"
+            },
+            {
+              "name": "body",
+              "value": "Daily Cost Report\\n\\nSupabase: €{{ $json.supabase_cost }}\\nUpstash: €{{ $json.upstash_cost }}\\nClaude API: €{{ $json.claude_cost }}\\nTotal: €{{ $json.total_cost }}\\n\\n{{ $json.alerts_sent.length > 0 ? '⚠️ Alerts: ' + $json.alerts_sent.map(a => `${a.service} exceeded threshold`).join(', ') : '✅ All costs within budget' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-email-report",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/cost_monitoring",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            },
+            {
+              "name": "supabase_cost",
+              "value": "={{ $json.supabase_cost }}"
+            },
+            {
+              "name": "upstash_cost",
+              "value": "={{ $json.upstash_cost }}"
+            },
+            {
+              "name": "claude_cost",
+              "value": "={{ $json.claude_cost }}"
+            },
+            {
+              "name": "total_cost",
+              "value": "={{ $json.total_cost }}"
+            },
+            {
+              "name": "alerts_sent",
+              "value": "={{ JSON.stringify($json.alerts_sent) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "store-cost-data",
+      "name": "Store Cost Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 600]
+    }
+  ],
+  "connections": {
+    "Daily at 9 AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Query Claude Usage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Upstash Usage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Supabase Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Claude Usage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Upstash Usage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Supabase Usage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Costs": {
+      "main": [
+        [
+          {
+            "node": "If Thresholds Exceeded",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Cost Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Thresholds Exceeded": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "monitoring-cost-tracking"
+}
+

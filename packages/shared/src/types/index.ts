@@ -143,3 +143,15 @@ export {
   ResponseRateTrendSchema,
   PostLaunchSurveySchema,
 } from './humanness';
+
+// Onboarding types (Story 5.1)
+export type {
+  OnboardingSession,
+  ICPConfig,
+  DomainVerificationResult,
+  PreflightChecklist,
+  OAuthUrl,
+  CalendarConnectionResult,
+  AutoConfigResult,
+  IndustryICPMapping,
+} from './onboarding';

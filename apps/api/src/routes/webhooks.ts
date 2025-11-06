@@ -331,31 +331,63 @@ export async function webhooksRoutes(server: FastifyInstance) {
         // Find meeting by calendar_event_id
         const { data: meeting } = await supabase
           .from('meetings')
-          .select('id, prospect_id, user_id')
+          .select('id, prospect_id, user_id, title, scheduled_at')
           .eq('calendar_event_id', event.booking_id)
           .single();
 
         if (meeting) {
+          // Extract cancellation reason from webhook payload if available
+          const cancellationReason = payload.cancellation_reason || 
+                                    payload.cancel_reason || 
+                                    payload.reason || 
+                                    'Cancelled by prospect';
+
           // Update meeting status
-          await supabase
+          const { data: updatedMeeting } = await supabase
             .from('meetings')
             .update({
               status: 'cancelled',
               cancelled_at: new Date().toISOString(),
-              cancellation_reason: 'Cancelled by prospect',
+              cancellation_reason: cancellationReason,
             })
-            .eq('id', meeting.id);
+            .eq('id', meeting.id)
+            .select()
+            .single();
 
-          // Update prospect status
+          // Update prospect status (consider using 'engaged' or 'nurture' instead of 'meeting_cancelled')
           await supabase
             .from('prospects')
-            .update({ status: 'meeting_cancelled' })
+            .update({ 
+              status: 'meeting_cancelled',
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', meeting.prospect_id);
+
+          // Log cancellation in audit_log (Story 1.7 - Task 8)
+          try {
+            await supabase
+              .from('audit_logs')
+              .insert({
+                user_id: meeting.user_id,
+                event_type: 'meeting_cancelled',
+                entity_type: 'meeting',
+                entity_id: meeting.id,
+                new_values: {
+                  status: 'cancelled',
+                  cancelled_at: new Date().toISOString(),
+                  cancellation_reason: cancellationReason,
+                },
+                created_at: new Date().toISOString(),
+              });
+          } catch (auditError: any) {
+            server.log.warn('Failed to log cancellation to audit_log:', auditError?.message || auditError);
+            // Continue even if audit log fails
+          }
 
           // Send cancellation notification
           const { data: user } = await supabase
             .from('users')
-            .select('email')
+            .select('email, full_name')
             .eq('id', meeting.user_id)
             .single();
 
@@ -373,12 +405,23 @@ export async function webhooksRoutes(server: FastifyInstance) {
                 const smtpConfig = smtpCreds.metadata || {};
                 const systemEmail = smtpConfig.from_email || process.env.SYSTEM_EMAIL || 'noreply@sales-machine.com';
 
+                const prospectName = event.prospect_name || 'Prospect';
+                const originalTime = meeting.scheduled_at 
+                  ? new Date(meeting.scheduled_at).toLocaleString() 
+                  : new Date(event.scheduled_time).toLocaleString();
+
                 await smtpService.sendEmail(
                   {
                     to: user.email,
                     from: systemEmail,
-                    subject: `Meeting Cancelled: ${event.prospect_name || 'Prospect'}`,
-                    body: `<p>A meeting has been cancelled.</p><p><strong>Original Time:</strong> ${new Date(event.scheduled_time).toLocaleString()}</p>`,
+                    subject: `Meeting Cancelled: ${prospectName}`,
+                    body: `
+                      <h2>Meeting Cancelled</h2>
+                      <p><strong>Prospect:</strong> ${prospectName}</p>
+                      <p><strong>Original Meeting Time:</strong> ${originalTime}</p>
+                      <p><strong>Meeting Title:</strong> ${meeting.title || 'Discovery Call'}</p>
+                      ${cancellationReason !== 'Cancelled by prospect' ? `<p><strong>Reason:</strong> ${cancellationReason}</p>` : ''}
+                    `,
                   },
                   {
                     api_key: smtpConfig.api_key,
@@ -391,11 +434,17 @@ export async function webhooksRoutes(server: FastifyInstance) {
               server.log.error('Failed to send cancellation notification:', emailError?.message || emailError);
             }
           }
+
+          return reply.send({
+            success: true,
+            message: 'Meeting cancellation processed',
+            meeting_id: meeting.id,
+          });
         }
 
         return reply.send({
           success: true,
-          message: 'Meeting cancellation processed',
+          message: 'Meeting cancellation processed (meeting not found)',
         });
       }
 

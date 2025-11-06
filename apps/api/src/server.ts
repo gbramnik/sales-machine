@@ -1,3 +1,7 @@
+// Initialize Sentry BEFORE any other imports that might throw errors
+import { initSentry } from './lib/sentry';
+initSentry();
+
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
@@ -28,6 +32,7 @@ import { vipRoutes } from './routes/vip';
 import { factCheckRoutes } from './routes/fact-check';
 import { humannessTestsRoutes } from './routes/humanness-tests';
 import { humannessSurveysRoutes } from './routes/humanness-surveys';
+import { testRoutes } from './routes/test';
 
 const server = Fastify({
   logger: {
@@ -95,6 +100,7 @@ await server.register(onboardingRoutes, { prefix: '/onboarding' });
   await server.register(factCheckRoutes, { prefix: '/api/fact-check' });
   await server.register(humannessTestsRoutes, { prefix: '/api/humanness-tests' });
   await server.register(humannessSurveysRoutes, { prefix: '/api/humanness-surveys' });
+  await server.register(testRoutes);
 
 // Error handlers
 server.setErrorHandler(errorHandler);
