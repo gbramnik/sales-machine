@@ -130,4 +130,73 @@
 4. Beta user access: Share Google Sheet with read-only access for each beta user (separate sheet per user)
 5. Key metric validation: Track "meetings booked per 100 prospects contacted" (target: 0.5-1% per project brief)
 
+## Story 1.9: LinkedIn Warm-up Workflow
+**As a** user,
+**I want** my prospects to be warmed up on LinkedIn before I send connection requests,
+**so that** I achieve higher connection acceptance rates (40-60% vs 10-20% cold) and build relationships naturally.
+
+**Dependency:** Requires Story 1.2.1 (Migration PhantomBuster → UniPil) and Story 1.2 (LinkedIn Profile Scraping Workflow) completion.
+
+**Acceptance Criteria:**
+1. Warm-up period configuration: User can configure warm-up duration (minimum 7 days, maximum 15 days, default 10 days) in settings
+2. Daily action limits: User can configure daily likes (20-40/day) and comments (20-40/day) based on LinkedIn account type (basic vs Sales Navigator)
+3. LinkedIn engagement actions: System performs automated likes and comments on prospect posts or posts by authors that prospects comment on
+4. Author detection: If prospect doesn't publish posts, system detects authors that prospects comment on and engages with those authors' posts
+5. Warm-up schedule tracking: System tracks warm-up start date and calculates connection-ready date for each prospect
+6. Action logging: All warm-up actions (likes, comments) are logged with timestamp, prospect_id, action_type, target_post_url
+7. Connection trigger: After warm-up period completion, system automatically triggers LinkedIn connection request (Story 1.6)
+8. Risk mitigation: System respects LinkedIn ToS with configurable daily limits and action spacing to avoid detection patterns
+9. Multi-tenant isolation: All warm-up data scoped to user_id with RLS policies
+
+## Story 1.10: Daily Prospect Detection & Filtering
+**As a** user,
+**I want** 20 ultra-qualified prospects per day (max 40) to be automatically detected at 6 AM based on my ICP and Persona criteria,
+**so that** I can start each day with a fresh, targeted prospect list without manual searching.
+
+**Dependency:** Requires Story 1.2.1 (Migration PhantomBuster → UniPil), Story 1.2 (LinkedIn Profile Scraping Workflow), Story 1.9 (LinkedIn Warm-up Workflow), and Story 1.11 (Settings Management API) completion.
+
+**Acceptance Criteria:**
+1. Daily detection schedule: System runs prospect detection workflow daily at 6 AM (configurable time)
+2. ICP + Persona matching: System uses UniPil API to search LinkedIn profiles matching user's ICP criteria (industries, job titles, company sizes, locations) and Persona criteria (multiple personas supported)
+3. Prospect count: System detects exactly 20 prospects per day (configurable, max 40)
+4. Exclusion logic: System excludes prospects already contacted by user (checked against `prospects` table with status = 'contacted', 'engaged', 'qualified', 'booked')
+5. Exclusion logic extended: System excludes prospects with existing entries in `linkedin_warmup_schedule` or `linkedin_connections` tables
+6. Autopilot mode: User can enable full autopilot mode where prospects are automatically added and warm-up starts without validation
+7. Semi-auto mode: User can enable semi-auto mode where prospects are queued for validation before warm-up starts
+8. Prospect storage: Detected prospects are stored in `prospects` table with status = 'new' (if autopilot) or 'pending_validation' (if semi-auto)
+9. Notification: User receives notification (email or in-app) with daily prospect list and option to validate (if semi-auto mode)
+10. Multi-tenant isolation: All prospects scoped to user_id with RLS policies
+
+## Story 1.11: Settings Management API
+**As a** user,
+**I want** to configure my API keys, ICP settings, email settings, and AI preferences via API,
+**so that** I can manage my account configuration programmatically.
+
+**Dependency:** Requires Story 1.1 (Project Infrastructure Setup), Story 1.5.1 (Migration Instantly → SMTP), and Story 1.2.1 (Migration PhantomBuster → UniPil) completion.
+
+**Acceptance Criteria:**
+1. API credentials management: Store and retrieve API keys for external services (OpenAI, UniPil, SMTP, Email Finder, N8N webhooks) with encryption at rest
+2. ICP configuration: Save and retrieve Ideal Customer Profile settings (industries, job titles, company sizes, locations, exclusions)
+3. Email settings: Configure email domain, sending limits, warm-up settings, bounce rate thresholds
+4. AI settings: Configure AI personality, tone, confidence thresholds, VIP mode
+5. Credential verification: Test API keys and webhook URLs to ensure they're valid before saving
+6. Domain DNS verification: Check SPF, DKIM, DMARC records for email domain configuration
+7. Multi-tenant isolation: All settings scoped to user_id with RLS policies
+8. Settings retrieval: Combined endpoint to fetch all settings at once
+
+## Story 1.12: Campaign Management API
+**As a** user,
+**I want** to create, manage, and monitor LinkedIn prospecting campaigns via API,
+**so that** I can programmatically control my "No Spray No Pray" prospecting workflow (daily detection, warm-up, connections, conversations).
+
+**Acceptance Criteria:**
+1. Campaign CRUD operations: Create, read, update, delete campaigns with validation
+2. Campaign listing: List campaigns with filtering by status, pagination support
+3. Campaign progress tracking: Real-time progress metrics (total, processed, succeeded, failed, percentage)
+4. LinkedIn scraping trigger: Trigger LinkedIn scraping workflow for a campaign via N8N webhook (using UniPil API)
+5. Campaign status management: Update campaign status (draft, active, paused, completed)
+6. Campaign configuration: Configure batch size, intervals, follow-up settings
+7. Campaign metadata: Store and retrieve campaign-specific metadata (JSON)
+8. Multi-tenant isolation: All campaigns scoped to user_id with RLS policies
+
 ---
