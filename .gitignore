@@ -38,6 +38,8 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+tests/load/results/
+tests/load/data/test-users.json
 
 # Python
 __pycache__/

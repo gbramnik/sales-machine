@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseClient } from '../lib/supabase';
 import { ProspectService } from '../services/ProspectService';
 import { VIPDetectionService } from '../services/VIPDetectionService';
+import { AuditLogService } from '../services/audit-log.service';
 import { authMiddleware } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 import { ApiError, ErrorCode } from '../types';
@@ -64,11 +65,20 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
         request.headers.authorization!.substring(7)
       );
       const prospectService = new ProspectService(supabase);
+      const auditLogService = new AuditLogService(supabase);
 
       const params = request.params as { id: string };
       const prospect = await prospectService.getProspect(
         req.user.userId,
         params.id
+      );
+
+      // Log prospect access
+      await auditLogService.logProspectAccess(
+        req.user.userId,
+        params.id,
+        'prospect_viewed',
+        request
       );
 
       return reply.send({
@@ -88,11 +98,20 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
         request.headers.authorization!.substring(7)
       );
       const prospectService = new ProspectService(supabase);
+      const auditLogService = new AuditLogService(supabase);
 
       const prospectData = request.body as any;
       const prospect = await prospectService.createProspect(
         req.user.userId,
         prospectData
+      );
+
+      // Log prospect creation
+      await auditLogService.logProspectAccess(
+        req.user.userId,
+        prospect.id,
+        'prospect_created',
+        request
       );
 
       return reply.status(201).send({
@@ -112,14 +131,30 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
         request.headers.authorization!.substring(7)
       );
       const prospectService = new ProspectService(supabase);
+      const auditLogService = new AuditLogService(supabase);
 
       const params = request.params as { id: string };
       const updates = request.body as any;
+
+      // Get old values for audit log
+      const oldProspect = await prospectService.getProspect(
+        req.user.userId,
+        params.id
+      );
 
       const prospect = await prospectService.updateProspect(
         req.user.userId,
         params.id,
         updates
+      );
+
+      // Log prospect update with old and new values
+      await auditLogService.logProspectUpdate(
+        req.user.userId,
+        params.id,
+        oldProspect,
+        prospect,
+        request
       );
 
       return reply.send({
@@ -139,9 +174,18 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
         request.headers.authorization!.substring(7)
       );
       const prospectService = new ProspectService(supabase);
+      const auditLogService = new AuditLogService(supabase);
 
       const params = request.params as { id: string };
       await prospectService.deleteProspect(req.user.userId, params.id);
+
+      // Log prospect deletion
+      await auditLogService.logProspectAccess(
+        req.user.userId,
+        params.id,
+        'prospect_deleted',
+        request
+      );
 
       return reply.status(204).send();
     }
@@ -293,6 +337,7 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
         request.headers.authorization!.substring(7)
       );
       const prospectService = new ProspectService(supabase);
+      const auditLogService = new AuditLogService(supabase);
 
       const params = request.params as { id: string };
       const prospectId = params.id;
@@ -307,6 +352,14 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
           404
         );
       }
+
+      // Log enrichment access
+      await auditLogService.logProspectAccess(
+        userId,
+        prospectId,
+        'prospect_enrichment_accessed',
+        request
+      );
 
       // Check Redis cache first
       const { Redis } = await import('@upstash/redis');

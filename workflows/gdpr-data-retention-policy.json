@@ -1,0 +1,222 @@
+{
+  "name": "GDPR - Data Retention Policy",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 2 AM UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/get_unsubscribed_prospects_30_days",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "query-unsubscribed",
+      "name": "Query Unsubscribed Prospects (30+ days)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300],
+      "notes": "Note: This uses a Supabase RPC function. If the function doesn't exist, use a direct SQL query instead."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alternative: Direct SQL query if RPC function doesn't exist\n// Query: SELECT id, user_id FROM prospects WHERE status = 'unsubscribed' AND updated_at < NOW() - INTERVAL '30 days'\n// For now, return the data from previous node\nconst prospects = $input.item.json || [];\nreturn prospects.map((p: any) => ({\n  json: {\n    prospect_id: p.id,\n    user_id: p.user_id\n  }\n}));"
+      },
+      "id": "format-prospects",
+      "name": "Format Prospects for Deletion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.API_URL || 'http://localhost:3000' }}/gdpr/prospects/{{ $json.prospect_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.API_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "fullResponse": false
+        }
+      },
+      "id": "delete-prospect",
+      "name": "Delete Prospect Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/audit_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.user_id }}"
+            },
+            {
+              "name": "event_type",
+              "value": "data_retention_purge"
+            },
+            {
+              "name": "entity_type",
+              "value": "prospect"
+            },
+            {
+              "name": "entity_id",
+              "value": "={{ $json.prospect_id }}"
+            },
+            {
+              "name": "new_values",
+              "value": "={{ JSON.stringify({ reason: 'Auto-purged after 30 days (unsubscribed)', purged_at: new Date().toISOString() }) }}"
+            },
+            {
+              "name": "performed_by",
+              "value": "system"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-purge",
+      "name": "Log Purge in Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate results\nconst results = $input.all();\nconst successful = results.filter((r: any) => r.json?.success !== false).length;\nconst failed = results.filter((r: any) => r.json?.success === false).length;\n\nreturn {\n  json: {\n    total_processed: results.length,\n    successful_deletions: successful,\n    failed_deletions: failed,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Daily at 2 AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Query Unsubscribed Prospects (30+ days)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Unsubscribed Prospects (30+ days)": {
+      "main": [
+        [
+          {
+            "node": "Format Prospects for Deletion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Prospects for Deletion": {
+      "main": [
+        [
+          {
+            "node": "Delete Prospect Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Prospect Data": {
+      "main": [
+        [
+          {
+            "node": "Log Purge in Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Purge in Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "gdpr-data-retention-policy"
+}
+

@@ -33,6 +33,8 @@ import { factCheckRoutes } from './routes/fact-check';
 import { humannessTestsRoutes } from './routes/humanness-tests';
 import { humannessSurveysRoutes } from './routes/humanness-surveys';
 import { testRoutes } from './routes/test';
+import { gdprRoutes } from './routes/gdpr';
+import { legalRoutes } from './routes/legal';
 
 const server = Fastify({
   logger: {
@@ -101,6 +103,8 @@ await server.register(onboardingRoutes, { prefix: '/onboarding' });
   await server.register(humannessTestsRoutes, { prefix: '/api/humanness-tests' });
   await server.register(humannessSurveysRoutes, { prefix: '/api/humanness-surveys' });
   await server.register(testRoutes);
+  await server.register(gdprRoutes, { prefix: '/gdpr' });
+  await server.register(legalRoutes, { prefix: '/legal' });
 
 // Error handlers
 server.setErrorHandler(errorHandler);

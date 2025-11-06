@@ -5,10 +5,12 @@ import { ReviewQueuePage } from './pages/ReviewQueuePage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { DemoDashboard } from './components/DemoDashboard';
+import { CookieBanner } from './components/CookieBanner';
 
 export function App() {
   return (
     <BrowserRouter>
+      <CookieBanner />
       <Routes>
         {/* Demo route for development */}
         <Route path="/demo" element={<DemoDashboard />} />
