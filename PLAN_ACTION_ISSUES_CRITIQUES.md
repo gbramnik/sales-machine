@@ -120,7 +120,7 @@
 - [ ] AC1: Remplacer "PhantomBuster, Instantly.ai" par "UniPil, SMTP, Email Finder"
 - [ ] AC1: Ajouter "UniPil API key" dans la liste des services
 - [ ] AC1: Ajouter "SMTP credentials" (host, user, pass) dans la liste
-- [ ] AC1: Ajouter "Email Finder API key" (Anymail/Better Contacts)
+- [ ] AC1: Ajouter "Email Finder API key" (Enrow)
 - [ ] Vérifier que code existant dans `apps/api/src/routes/settings.ts` supporte ces services
 - [ ] Mettre à jour les tasks si nécessaire
 

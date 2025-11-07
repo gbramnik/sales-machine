@@ -49,14 +49,32 @@ ADMIN_EMAIL=admin@sales-machine.com             # Admin email for cost reports
 
 **Note:** `SUPABASE_SERVICE_KEY` is used for Supabase API access (already exists in Required Variables section above).
 
+### Unipile API Configuration
+```bash
+UNIPIL_API_KEY=kgQvfznd... # Clé API Unipile (LinkedIn + Web Scraping)
+UNIPIL_API_URL=https://1api21.unipile.com:15176/api/v1/accounts
+```
+
+### Enrow Email Finder
+```bash
+EMAIL_FINDER_API_KEY=your-enrow-api-key
+```
+
+### Tavily Search / Extract
+```bash
+TAVILY_API_KEY=your-tavily-api-key
+```
+
 ## Notes
 
 ### API Keys Stored in Database
 The following API keys are **NOT** stored as environment variables.
 They are configured via the **Settings Panel UI** and stored encrypted in the `api_credentials` table:
 
+- Unipile API Key
+- Enrow API Key
+- Tavily API Key
 - OpenAI API Key
-- UniPil API Key
 - Instantly.ai / Smartlead API Key
 - Cal.com / Calendly API Key
 - N8N Webhook URLs

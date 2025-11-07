@@ -318,8 +318,12 @@ npm run build
 | `SMTP_HOST` | SMTP server host (SendGrid/Mailgun/AWS SES) | Yes |
 | `SMTP_USER` | SMTP username | Yes |
 | `SMTP_PASS` | SMTP password | Yes |
-| `EMAIL_FINDER_API_KEY` | Email finder API key (Anymail/Better Contacts) | Later |
+| `EMAIL_FINDER_API_KEY` | Email finder API key (Enrow) | Later |
+| `TAVILY_API_KEY` | Tavily API key (search & web extract) | Later |
 | `CAL_COM_API_KEY` | Cal.com API key | Later |
+
+> **Enrow API Key:** Configure `EMAIL_FINDER_API_KEY` locally (and in managed secrets) with your Enrow token (format `enrow-XXXX-XXXX`). Never commit real keys to version control; rotate immediately if exposure is suspected.
+> **Tavily API Key:** Store `TAVILY_API_KEY` with your Tavily Search/Extract token (format `tvly-XXXX...`). This key enables profile/company scraping enrichments. Rotate if leaked.
 
 ## Next Steps
 

@@ -27,13 +27,15 @@
 
 **Acceptance Criteria:**
 1. N8N workflow accepts input parameters: industry, location, job title, company size (via webhook trigger)
-2. PhantomBuster integration configured to scrape LinkedIn profiles matching criteria (20-50 profiles per execution)
+2. Unipile integration configured to scrape LinkedIn profiles matching criteria (20-50 profiles per execution)
 3. Scraped data includes: full name, job title, company name, LinkedIn URL, location, profile summary
 4. Data validation: Reject profiles missing required fields (name, company, job title)
 5. Prospect records stored in Supabase PostgreSQL with schema: `prospects` table (id, user_id, name, title, company, linkedin_url, location, summary, created_at, status)
-6. Error handling: If PhantomBuster fails, retry 3 times with exponential backoff, then notify user via webhook
+6. Error handling: If Unipile API fails, retry 3 times with exponential backoff, then notify user via webhook
 7. Rate limiting: Maximum 100 LinkedIn scraping requests/day per user (respect LinkedIn ToS per NFR12)
 8. Workflow execution logged in N8N with success/failure status
+9. Company website enrichment uses Tavily Search/Extract API for structured site content (fallback to Unipile browser automation if unavailable)
+10. Email discovery leverages Enrow API with confidence scoring stored on each prospect
 
 ## Story 1.3: AI-Powered Contextual Enrichment
 **As a** user,

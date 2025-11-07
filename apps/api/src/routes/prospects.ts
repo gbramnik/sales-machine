@@ -227,12 +227,18 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
       const webhookUrl = `${n8nWebhookUrl}/daily-detection/manual`;
 
       try {
+        const authToken = process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+
         const response = await fetch(webhookUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN || ''}`,
-          },
+          headers,
           body: JSON.stringify({
             user_id: userId,
             triggered_by: 'manual',
@@ -410,12 +416,18 @@ export async function prospectsRoutes(fastify: FastifyInstance) {
       const webhookUrl = `${n8nWebhookUrl}/ai-enrichment`;
 
       try {
+        const authToken = process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+
         const response = await fetch(webhookUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.N8N_WEBHOOK_TOKEN || process.env.API_SERVICE_TOKEN || ''}`,
-          },
+          headers,
           body: JSON.stringify({
             prospect_id: prospectId,
             user_id: userId,

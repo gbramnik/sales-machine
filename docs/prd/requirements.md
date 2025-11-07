@@ -52,9 +52,9 @@
 
 **FR25:** System shall extract LinkedIn company page data (company name, industry, size, description, recent posts) via UniPil API and store in prospect enrichment for enhanced context
 
-**FR26:** System shall scrape prospect website content (company website) using web scraping technology (Puppeteer/Playwright) to extract business context, technologies used, and relevant information for AI conversation personalization
+**FR26:** System shall scrape prospect website content (company website) using Unipile browser automation plus Tavily Search/Extract APIs to gather business context, technologies used, and relevant information for AI conversation personalization
 
-**FR27:** System shall integrate email finder API (Anymail/Better Contacts or similar) to discover prospect email addresses and optional phone numbers for multi-canal outreach
+**FR27:** System shall integrate email finder API (Enrow) to discover prospect email addresses and optional phone numbers for multi-canal outreach
 
 **FR28:** System shall maintain prospect contact history to exclude already-contacted prospects from daily detection, ensuring no duplicate outreach to same prospects
 

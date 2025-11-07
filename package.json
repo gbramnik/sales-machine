@@ -19,7 +19,8 @@
     "type-check": "npm run type-check --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "generate:types": "supabase gen types typescript --local > packages/shared/src/types/database.types.ts",
-    "deploy:workflows": "bash scripts/deploy-workflows.sh"
+    "deploy:workflows": "bash scripts/deploy-workflows.sh",
+    "setup:n8n-webhooks": "tsx scripts/setup-n8n-webhooks.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

@@ -34,10 +34,10 @@
   - Fallback: À définir (optionnel)
 
 ### Email Finder
-- **À définir** (Anymail ou Better Contacts)
-  - Même fonctionnalité: Email + téléphone
-  - Intégration API standard
-  - Définition ultérieure
+- **Enrow**
+  - Fonctionnalités: Email + téléphone
+  - Intégration API standard (REST)
+  - Clé API stockée via Settings API / env (`EMAIL_FINDER_API_KEY`)
 
 ### Enrichissement
 - **Claude API** (existant)
@@ -72,7 +72,7 @@
 - Profil LinkedIn complet (via UniPil)
 - Page entreprise LinkedIn (via UniPil)
 - Scraping site web (si disponible)
-- Email finder (API externe, à définir)
+- Email finder (Enrow)
 - Téléphone (optionnel, via email finder)
 
 **Stockage:**
@@ -231,7 +231,7 @@ ALTER TABLE prospect_enrichment ADD COLUMN phone_found TEXT;
 - Warm-up: 2-3 semaines
 
 **Email Finder:**
-- Provider: Anymail / Better Contacts (à définir)
+- Provider: Enrow (confirmé)
 - API Key: Configuré
 
 ---
@@ -250,8 +250,8 @@ ALTER TABLE prospect_enrichment ADD COLUMN phone_found TEXT;
 ### Workflow 2: Enrichissement Prospect
 1. Trigger: Prospect détecté
 2. UniPil API: Extraction profil + entreprise
-3. Scraping web: Site web prospect
-4. Email Finder API: Recherche email + téléphone
+3. Scraping web: Site web prospect (Unipile + Tavily)
+4. Email Finder API (Enrow): Recherche email + téléphone
 5. Claude API: Génération talking points
 6. Stockage: `prospect_enrichment` table
 
@@ -297,9 +297,9 @@ ALTER TABLE prospect_enrichment ADD COLUMN phone_found TEXT;
 - [ ] Logique délai 7-15 jours
 
 ### Phase 3: Enrichissement Étendu (Semaine 2)
-- [ ] UniPil: Extraction page entreprise
-- [ ] Scraping web (Puppeteer/Playwright)
-- [ ] Email Finder API (à définir)
+- [ ] Unipile: Extraction page entreprise
+- [ ] Scraping web (Tavily Search/Extract)
+- [ ] Email Finder API (Enrow)
 - [ ] Étendre `prospect_enrichment` table
 - [ ] Workflow N8N: Enrichissement complet
 
@@ -322,13 +322,13 @@ ALTER TABLE prospect_enrichment ADD COLUMN phone_found TEXT;
 ### Questions Répondues
 - ✅ UniPil: API disponible, 5€/compte, supporte warm-up
 - ✅ SMTP: 50-100 emails/jour, solution à définir
-- ✅ Email Finder: À définir (Anymail/Better Contacts)
+- ✅ Email Finder: Enrow (confirmé)
 - ✅ Warm-up: 7-15 jours, 30-40 actions/jour, limites selon compte
 - ✅ Workflow: 20 prospects/jour (max 40), 6h du matin, mode autopilot/semi-auto
 
 ### Questions Restantes
 - ⏳ SMTP provider: SendGrid / Mailgun / AWS SES? (À évaluer)
-- ⏳ Email Finder: Anymail / Better Contacts? (À définir)
+- ⏳ Email Finder: Enrow (clé API à intégrer)
 - ⏳ Scraping web: Puppeteer / Playwright / ScrapingBee? (À définir)
 - ⏳ API détection auteurs: Quelle API? (Utilisateur mentionné avoir une API)
 

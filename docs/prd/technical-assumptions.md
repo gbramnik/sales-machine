@@ -144,8 +144,9 @@
 **Third-Party Integrations (MVP):**
 - **Database & Cache:** Supabase (PostgreSQL + Auth + Realtime), Upstash Redis (serverless cache/sessions/queues)
 - **LinkedIn Automation:** UniPil API (LinkedIn scraping, warm-up, connections, messaging)
+- **Web Scraping & Search:** Unipile browser automation + Tavily Search/Extract APIs
 - **Email Sending:** Dedicated SMTP server (SendGrid, Mailgun, or AWS SES)
-- **Email Finder:** Anymail or Better Contacts (to be determined)
+- **Email Finder:** Enrow
 - **Enrichment:** Claude API (Anthropic), custom web scrapers
 - **Calendar:** Cal.com (open-source preference) or Calendly
 - **Note:** Direct integrations used for MVP. MCP abstraction layer deferred to Post-MVP (Phase 2+) if tool flexibility becomes a priority.

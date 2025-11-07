@@ -16,7 +16,7 @@ The frontend provides a trust-oriented dashboard that hides technical complexity
 - **Caching/Queue:** Upstash Redis Serverless (session tokens, enrichment cache, email queue, warm-up action tracking)
 - **AI:** Anthropic Claude API (Sonnet 3.5/4 for enrichment and conversation)
 - **CDN:** Railway built-in edge network + Supabase CDN for static assets
-- **Integrations:** UniPil (LinkedIn automation: warm-up, connections, messages), SMTP dédié (SendGrid/Mailgun/AWS SES for email), Email Finder API (Anymail/Better Contacts), Web Scraping (Puppeteer/Playwright), Cal.com (calendar)
+- **Integrations:** UniPil (LinkedIn automation: warm-up, connections, messages), Tavily (search/crawl enrichment), SMTP dédié (SendGrid/Mailgun/AWS SES for email), Email Finder API (Enrow), Web Scraping (Puppeteer/Playwright), Cal.com (calendar)
 
 **Deployment Host and Regions:**
 - **Primary Region:** EU West (Frankfurt/Paris) for GDPR compliance and French user latency
@@ -162,8 +162,8 @@ graph TB
     subgraph "External Integrations"
         UNIPIL[UniPil API<br/>LinkedIn Automation]
         SMTP[SMTP Dédié<br/>SendGrid/Mailgun/SES]
-        EMAIL_FINDER[Email Finder API<br/>Anymail/Better Contacts]
-        WEB_SCRAPE[Web Scraping<br/>Puppeteer/Playwright]
+        EMAIL_FINDER[Email Finder API<br/>Enrow]
+        WEB_SCRAPE[Web Scraping<br/>Unipile + Tavily]
         CAL[Cal.com<br/>Meeting Booking]
     end
 
@@ -184,7 +184,7 @@ graph TB
 
     %% Enrichment Workflow
     N8N_ENRICH -->|Extract Profile + Company| UNIPIL
-    N8N_ENRICH -->|Scrape Website| WEB_SCRAPE
+    N8N_ENRICH -->|Scrape Website & Company Data| WEB_SCRAPE
     N8N_ENRICH -->|Find Email + Phone| EMAIL_FINDER
     N8N_ENRICH -->|Generate Talking Points| CLAUDE
     N8N_ENRICH -->|Cache Enrichment<br/>7-day TTL| REDIS

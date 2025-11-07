@@ -142,12 +142,12 @@ Prospection LinkedIn ultra-qualifiée automatisée avec warm-up intelligent avan
 - ❓ **Fallback Instantly?** (Si SMTP échoue, utiliser Instantly?)
 
 ### 3. Email Finder
-- ❓ **API choisie?** (Hunter.io, Apollo, Clearbit, etc.)
+- ✅ **API choisie:** Enrow (email + téléphone)
 - ❓ **Budget?** (Coût par email trouvé)
 - ❓ **Téléphone?** (Priorité ou nice-to-have?)
 
 ### 4. Scraping Web
-- ❓ **Technologie?** (Puppeteer, Playwright, ScrapingBee, etc.)
+- ✅ **Technologie:** Unipile (browser) + Tavily Search/Extract [[source]](https://docs.tavily.com/documentation/api-reference/endpoint/search)
 - ❓ **Volume?** (Combien sites/jour?)
 - ❓ **Données cibles?** (Quelles infos extraire?)
 

@@ -158,9 +158,11 @@ REDIS_URL=<upstash_redis_url>
 N8N_WEBHOOK_URL=<n8n_cloud_webhook_base>
 N8N_API_KEY=<n8n_api_key>
 CLAUDE_API_KEY=<anthropic_key>
-UNIPIL_API_KEY=<unipil_key>
+UNIPIL_API_KEY=<unipile_linkedin_key>
+UNIPIL_API_URL=https://1api21.unipile.com:15176/api/v1/accounts
+TAVILY_API_KEY=<tavily_key>
 SENDGRID_API_KEY=<sendgrid_key>  # or MAILGUN_API_KEY or AWS_SES_ACCESS_KEY
-EMAIL_FINDER_API_KEY=<email_finder_key>  # Anymail/Better Contacts
+EMAIL_FINDER_API_KEY=<email_finder_key>  # Enrow
 CAL_COM_API_KEY=<cal_com_key>
 ```
 

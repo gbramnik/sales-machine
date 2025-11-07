@@ -11,7 +11,8 @@ const saveApiCredentialSchema = z.object({
     'smtp_mailgun', // SMTP Mailgun provider
     'smtp_sendgrid', // SMTP SendGrid provider
     'smtp_ses', // AWS SES SMTP provider
-    'email_finder', // Email Finder API (Anymail/Better Contacts)
+    'email_finder', // Email Finder API (Enrow)
+    'tavily', // Tavily Search/Extract API
     'cal_com', // Cal.com calendar service
     'calendly', // Calendly calendar service
     'n8n_linkedin_scrape', // N8N webhook for LinkedIn scraping

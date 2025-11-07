@@ -27,6 +27,7 @@
 | **Logging** | Better Stack (Logtail) | SaaS | Centralized logs from Railway + N8N | 1GB/month free tier, search/filter UI, retention 7 days (sufficient for debugging) |
 | **CSS Framework** | Tailwind CSS | 3.4+ | Utility-first styling | shadcn/ui requirement, no CSS file bloat, PurgeCSS removes unused classes (final CSS <50KB) |
 | **Orchestration** | N8N Cloud | Latest | Workflow automation engine | Visual debugging 5x faster than logs, 22 existing workflows proven, EU data residency |
+| **Web Scraping & Search** | Unipile + Tavily | Latest | Company/profile context enrichment | Unipile handles LinkedIn/company browsing; Tavily Search/Extract APIs add site insights at low cost [[source]](https://docs.tavily.com/documentation/api-reference/endpoint/search) |
 | **AI/LLM** | Claude API (Anthropic) | Sonnet 3.5/4 | Prospect enrichment, conversation agent | Superior reasoning for B2B context, lower hallucination rate than GPT-4, GDPR-compliant EU inference |
 | **Charts/Visualization** | Recharts | 2.10+ | Health Score, Pipeline charts | React-native, composable, smaller bundle than Chart.js (40KB vs. 150KB), accessible SVG output |
 

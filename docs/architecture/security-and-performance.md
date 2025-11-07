@@ -31,7 +31,7 @@
   - `CLAUDE_API_KEY` (Anthropic API)
   - `UNIPIL_API_KEY` (LinkedIn automation: warm-up, connections, messages)
   - `SENDGRID_API_KEY` / `MAILGUN_API_KEY` / `AWS_SES_ACCESS_KEY` (SMTP email sending)
-  - `EMAIL_FINDER_API_KEY` (Email finder service: Anymail/Better Contacts)
+  - `EMAIL_FINDER_API_KEY` (Email finder service: Enrow)
   - `CAL_COM_API_KEY` (Meeting booking)
 
 ## Performance Optimization
