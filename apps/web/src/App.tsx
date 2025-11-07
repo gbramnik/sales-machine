@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
+import { SignupPage } from './pages/SignupPage';
 import { ReviewQueuePage } from './pages/ReviewQueuePage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -17,6 +18,7 @@ export function App() {
         
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
