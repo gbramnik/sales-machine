@@ -108,3 +108,5 @@ Si les tables existent déjà mais ne sont pas visibles dans l'interface :
 
 3. Vérifier les permissions dans le Table Editor
 
+
+

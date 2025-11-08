@@ -32,8 +32,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     <Route path="/review-queue" element={<ReviewQueuePage />} />
     {/* ... */}
   </Route>
+  <Route path="/onboarding/*" element={<OnboardingLayout />} />
 </Routes>
 ```
+
+### Onboarding Guard Flow
+- `ProtectedRoute` first validates Supabase session (Story 1.1) and then consults onboarding status via `useOnboardingStatus` (Story 5.5).
+- When `completed=false`, guard redirects to `/onboarding` while persisting the originally requested path for post-completion navigation.
+- The onboarding layout re-checks status before allowing transition to `/dashboard` to avoid stale Zustand cache scenarios.
+- On successful `POST /onboarding/complete`, the onboarding store broadcasts completion events so other components (e.g., `DashboardLayout`, `OnboardingChecklist`) update immediately.
+
+### Dashboard Layout Shell
+- All authenticated routes render inside `DashboardLayout` (templates). Sidebar lists Dashboard, Prospects, Review Queue, Templates, Analytics, Settings, with active route highlighting.
+- Sidebar collapses at tablet breakpoint but remains keyboard accessible; toggle control stays visible in header and must preserve focus order.
+- Provide `skip-to-content` anchor before main area to satisfy accessibility targets.
 
 ## API Client (Axios)
 

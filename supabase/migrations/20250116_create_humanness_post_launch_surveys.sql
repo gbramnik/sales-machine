@@ -32,3 +32,5 @@ CREATE POLICY "Users can update their own surveys"
   ON public.humanness_post_launch_surveys FOR UPDATE
   USING (auth.uid() = user_id);
 
+
+

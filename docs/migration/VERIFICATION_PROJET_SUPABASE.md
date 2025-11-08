@@ -68,3 +68,5 @@ Si les tables existent mais ne sont pas visibles, vérifier :
 3. ⏳ Vérifier que le schéma `public` est bien exposé dans API Settings
 4. ⏳ Vérifier les permissions RLS
 
+
+

@@ -25,3 +25,5 @@ COMMENT ON COLUMN public.email_templates.linkedin_message_preview IS 'LinkedIn m
 
 
 
+
+

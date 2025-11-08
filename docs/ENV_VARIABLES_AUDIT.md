@@ -204,3 +204,5 @@ Vos fichiers `.env.example` sont **très complets** et bien organisés. Il ne ma
 
 **Prochaine étape recommandée**: Clarifier la situation avec `N8N_WEBHOOK_TOKEN` et mettre à jour le code ou le `.env.example` en conséquence.
 
+
+

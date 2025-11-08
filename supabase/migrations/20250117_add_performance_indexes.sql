@@ -41,3 +41,5 @@ CREATE INDEX IF NOT EXISTS idx_prospects_created_at
 --   AND tablename IN ('prospects', 'campaigns', 'meetings', 'ai_conversation_log')
 -- ORDER BY tablename, indexname;
 
+
+

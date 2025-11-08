@@ -43,3 +43,5 @@ COMMENT ON TABLE public.onboarding_sessions IS 'Stores onboarding wizard session
 COMMENT ON COLUMN public.onboarding_sessions.calendar_access_token IS 'Encrypted at application layer before storage';
 COMMENT ON COLUMN public.onboarding_sessions.calendar_refresh_token IS 'Encrypted at application layer before storage';
 
+
+

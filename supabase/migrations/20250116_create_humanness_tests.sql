@@ -38,3 +38,5 @@ CREATE POLICY "Users can delete their own tests"
   ON public.humanness_tests FOR DELETE
   USING (auth.uid() = created_by);
 
+
+

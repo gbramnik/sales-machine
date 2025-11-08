@@ -28,3 +28,5 @@ export const useOnboardingIndustries = () => {
   return { industries, isLoading, error };
 };
 
+
+

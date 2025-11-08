@@ -99,3 +99,5 @@ COMMENT ON COLUMN public.workflow_execution_metrics.top_failed_workflows IS 'JSO
 COMMENT ON COLUMN public.cost_monitoring.alerts_sent IS 'JSONB array of alerts sent when thresholds exceeded';
 COMMENT ON COLUMN public.weekly_metrics_summary.summary_email_sent_at IS 'Timestamp when weekly summary email was sent';
 
+
+

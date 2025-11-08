@@ -49,3 +49,5 @@ COMMENT ON TABLE public.prospect_validation_queue IS 'Tracks prospects pending u
 
 
 
+
+

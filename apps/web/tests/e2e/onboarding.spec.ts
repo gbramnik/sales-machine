@@ -53,7 +53,7 @@ test.describe('Onboarding guard & dashboard access', () => {
 
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/onboarding/);
-    await expect(page.getByText(/Loading onboarding/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /let's get your ai sales rep configured/i })).toBeVisible();
   });
 
   test('allows dashboard access after onboarding completion', async ({ page }) => {
@@ -65,7 +65,7 @@ test.describe('Onboarding guard & dashboard access', () => {
 
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole('navigation', { name: /Main navigation/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible();
     await expect(page.getByText(/Finish onboarding to unlock/i)).toHaveCount(0);
   });
 });

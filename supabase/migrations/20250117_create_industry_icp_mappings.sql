@@ -20,3 +20,5 @@ CREATE INDEX IF NOT EXISTS idx_industry_icp_mappings_industry ON public.industry
 -- Comments
 COMMENT ON TABLE public.industry_icp_mappings IS 'Maps industries to suggested ICP configurations for auto-configuration during onboarding';
 
+
+

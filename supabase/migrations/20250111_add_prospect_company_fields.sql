@@ -28,3 +28,5 @@ COMMENT ON COLUMN public.prospects.email_confidence_score IS 'Email finder confi
 
 
 
+
+

@@ -50,3 +50,5 @@ COMMENT ON COLUMN public.companies.scraped_at IS 'Timestamp when company data wa
 
 
 
+
+

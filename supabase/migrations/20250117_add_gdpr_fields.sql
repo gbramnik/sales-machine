@@ -60,3 +60,5 @@ COMMENT ON COLUMN public.users.privacy_policy_accepted_at IS 'Timestamp when use
 -- FROM information_schema.columns 
 -- WHERE table_name = 'users' AND column_name = 'privacy_policy_accepted_at';
 
+
+

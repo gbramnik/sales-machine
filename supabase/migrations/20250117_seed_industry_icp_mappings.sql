@@ -241,3 +241,5 @@ VALUES (
   ARRAY['fundraising_campaigns', 'program_expansions', 'technology_upgrades']
 ) ON CONFLICT (industry) DO NOTHING;
 
+
+

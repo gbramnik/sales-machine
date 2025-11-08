@@ -62,4 +62,16 @@
 7. Final summary: "You're all set! Your AI Sales Rep will start prospecting for [X] meetings/month targeting [industry]."
 8. Single "Activate My AI Sales Rep" button (per UI Design Goals)
 
+## Story 5.5: Onboarding Guard & Navigation Restoration (Frontend)
+**As a** newly onboarded operator,  
+**I want** the product to guide me back through the zero-config wizard before showing the dashboard and provide a persistent navigation shell,  
+**so that** I never land on an unconfigured workspace and can reach the core areas of Sales Machine confidently.
+
+**Acceptance Criteria:**
+1. First-authenticated visit without completed onboarding redirects to `/onboarding`, blocks dashboard routes, and resumes pending step until `POST /onboarding/complete` succeeds.
+2. Completing the wizard immediately unlocks `/dashboard`; subsequent sessions respect the completion flag without repeating onboarding.
+3. Dashboard and all protected routes render inside shared `DashboardLayout` with persistent sidebar (Dashboard, Prospects, Review Queue, Templates, Analytics, Settings) and responsive collapse behavior.
+4. Dashboard hero surfaces onboarding completion checklist reflecting remaining actions (goal confirmation, domain verification, calendar connection, launch) and linking to relevant configuration screens.
+5. Guard and layout restore are considered launch blockers for Epic 5; Story 5.5 must precede further dashboard enhancements.
+
 ---
