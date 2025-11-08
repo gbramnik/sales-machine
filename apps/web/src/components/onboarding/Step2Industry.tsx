@@ -5,7 +5,7 @@ import { Search, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useOnboardingIndustries } from '@/hooks/useOnboardingIndustries'
 import { useOnboardingICP } from '@/hooks/useOnboardingICP'
-import type { ICPConfig } from '@/hooks/useOnboarding'
+import type { ICPConfig } from '@sales-machine/shared'
 
 interface Step2IndustryProps {
   selectedIndustry: string | null

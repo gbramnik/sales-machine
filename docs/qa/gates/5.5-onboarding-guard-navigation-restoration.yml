@@ -1,0 +1,65 @@
+schema: 1
+story: '5.5'
+story_title: 'Story 5.5: Onboarding Guard & Navigation Restoration'
+gate: FAIL
+status_reason: 'Checklist fallback misreports onboarding state when backend data is absent and e2e guard coverage is still disabled.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2025-11-08T07:29:26Z'
+
+top_issues:
+  - severity: high
+    summary: 'Fallback checklist marks pending steps as completed'
+    details: 'When the onboarding status endpoint returns no checklist items, the default checklist uses an order that skips the industry step, so pending steps like domain/calendar are incorrectly treated as finished, violating AC5.'
+    suggested_owner: dev
+    refs:
+      - apps/web/src/components/dashboard/OnboardingChecklist.tsx
+    ac: [5]
+  - severity: medium
+    summary: 'Onboarding guard e2e tests are skipped'
+    details: 'The Playwright spec added for this story is fully skipped, leaving AC6 and the regression guardrails unverified.'
+    suggested_owner: dev
+    refs:
+      - apps/web/tests/e2e/onboarding.spec.ts
+    ac: [6]
+
+waiver:
+  active: false
+
+quality_score: 70
+expires: '2025-11-22T07:29:30Z'
+
+evidence:
+  tests_reviewed: 3
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 3, 4]
+    ac_gaps: [5, 6]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'Auth guard leverages existing Supabase session checks without widening exposure.'
+  performance:
+    status: PASS
+    notes: 'State store caching and retry logic are bounded; no performance regressions observed.'
+  reliability:
+    status: CONCERNS
+    notes: 'Incorrect fallback checklist status can mislead onboarding flows and undermine gating reliability.'
+  maintainability:
+    status: PASS
+    notes: 'Zustand store and layout follow existing patterns; tests cover primary flows.'
+
+recommendations:
+  immediate:
+    - action: 'Align fallback checklist ordering with onboarding step sequence so pending steps render incomplete.'
+      refs:
+        - apps/web/src/components/dashboard/OnboardingChecklist.tsx
+    - action: 'Enable and stabilize the Playwright onboarding guard scenarios instead of skipping them.'
+      refs:
+        - apps/web/tests/e2e/onboarding.spec.ts
+  future:
+    - action: 'Instrument checklist CTA interactions with analytics events as flagged in completion notes.'
+      refs:
+        - apps/web/src/components/dashboard/OnboardingChecklist.tsx
+
+

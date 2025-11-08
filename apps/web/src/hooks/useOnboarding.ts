@@ -1,62 +1,93 @@
 import { useState, useEffect, useCallback } from 'react';
+import type {
+  DomainVerificationResult,
+  ICPConfig,
+  OnboardingChecklistItem,
+  OnboardingSession,
+  OnboardingStep,
+} from '@sales-machine/shared';
 import { apiClient } from '@/lib/api-client';
+import { onboardingStatusSelectors, useOnboardingStore } from '@/stores/onboarding.store';
 
-export interface OnboardingSession {
-  id: string;
-  user_id: string;
-  status: 'in_progress' | 'completed' | 'abandoned';
-  current_step: 'goal_selection' | 'industry' | 'icp' | 'domain' | 'calendar' | 'complete';
-  goal_meetings_per_month?: '5-10' | '10-20' | '20-30';
-  industry?: string;
-  icp_config?: any;
-  domain_verified: boolean;
-  domain_verification_details?: any;
-  calendar_connected: boolean;
-  calendar_provider?: 'google' | 'outlook';
-  calendar_email?: string;
-  preflight_checklist?: any;
-  auto_config_applied: boolean;
-  created_at: string;
-  updated_at: string;
-  completed_at?: string;
+interface OnboardingStatusPayload {
+  session?: OnboardingSession;
+  checklist?: OnboardingChecklistItem[];
+  completed?: boolean;
+  pendingStep?: OnboardingStep;
 }
 
-export interface ICPConfig {
-  job_titles?: string[];
-  company_sizes?: string[];
-  locations?: string[];
-  templates?: string[];
-  channels?: string[];
-  intent_signals?: string[];
-}
+const extractStatusPayload = (raw: unknown): OnboardingStatusPayload => {
+  if (!raw || typeof raw !== 'object') {
+    return {};
+  }
 
-export interface DomainVerificationResult {
-  verified: boolean;
-  spf: boolean;
-  dkim: boolean;
-  dmarc: boolean;
-  recommendations?: string[];
-}
+  if ('session' in raw) {
+    const value = raw as {
+      session: OnboardingSession;
+      checklist?: OnboardingChecklistItem[];
+    };
+    return {
+      session: value.session,
+      checklist: value.checklist,
+    };
+  }
+
+  const direct = raw as Partial<OnboardingStatusPayload> & Record<string, unknown>;
+  if ('completed' in direct || 'pendingStep' in direct) {
+    return {
+      completed: typeof direct.completed === 'boolean' ? direct.completed : undefined,
+      pendingStep: (direct.pendingStep as OnboardingStep | undefined) ??
+        (direct.pending_step as OnboardingStep | undefined),
+      checklist: Array.isArray(direct.checklist)
+        ? (direct.checklist as OnboardingChecklistItem[])
+        : undefined,
+    };
+  }
+
+  return {};
+};
 
 export const useOnboarding = () => {
   const [session, setSession] = useState<OnboardingSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  const syncFromSession = useOnboardingStore(onboardingStatusSelectors.syncFromSession);
+  const setStatus = useOnboardingStore(onboardingStatusSelectors.setStatus);
+  const setChecklist = useOnboardingStore(onboardingStatusSelectors.setChecklist);
+  const markCompleted = useOnboardingStore(onboardingStatusSelectors.markCompleted);
+
   const fetchStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       const response = await apiClient.getOnboardingStatus();
-      if (response.success && response.data) {
-        setSession(response.data.session);
+      const payload = extractStatusPayload(
+        response && typeof response === 'object' && 'success' in response
+          ? (response as { success: boolean; data?: unknown }).data
+          : response
+      );
+
+      if (payload.session) {
+        setSession(payload.session);
+        syncFromSession(payload.session, payload.checklist);
+      } else if (typeof payload.completed === 'boolean') {
+        setStatus({
+          completed: payload.completed,
+          pendingStep: payload.pendingStep,
+          checklist: payload.checklist,
+        });
+      }
+
+      if (payload.checklist) {
+        setChecklist(payload.checklist);
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to fetch onboarding status'));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [markCompleted, setChecklist, setStatus, syncFromSession]);
 
   useEffect(() => {
     fetchStatus();
@@ -68,7 +99,11 @@ export const useOnboarding = () => {
       setError(null);
       const response = await apiClient.startOnboarding();
       if (response.success && response.data) {
-        setSession(response.data);
+        const payload = extractStatusPayload(response.data);
+        if (payload.session) {
+          setSession(payload.session);
+          syncFromSession(payload.session, payload.checklist);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to start onboarding'));
@@ -76,7 +111,7 @@ export const useOnboarding = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [syncFromSession]);
 
   const saveGoal = useCallback(async (goal: '5-10' | '10-20' | '20-30') => {
     try {
@@ -84,7 +119,11 @@ export const useOnboarding = () => {
       setError(null);
       const response = await apiClient.saveGoalSelection(goal);
       if (response.success && response.data) {
-        setSession(response.data.session);
+        const payload = extractStatusPayload(response.data);
+        if (payload.session) {
+          setSession(payload.session);
+          syncFromSession(payload.session, payload.checklist);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to save goal selection'));
@@ -92,7 +131,7 @@ export const useOnboarding = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [syncFromSession]);
 
   const saveIndustry = useCallback(async (industry: string) => {
     try {
@@ -100,8 +139,12 @@ export const useOnboarding = () => {
       setError(null);
       const response = await apiClient.saveIndustrySelection(industry);
       if (response.success && response.data) {
-        setSession(response.data.session);
-        return response.data.icp_suggestions;
+        const payload = extractStatusPayload(response.data);
+        if (payload.session) {
+          setSession(payload.session);
+          syncFromSession(payload.session, payload.checklist);
+        }
+        return (response.data as Record<string, unknown>).icp_suggestions;
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to save industry selection'));
@@ -109,7 +152,7 @@ export const useOnboarding = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [syncFromSession]);
 
   const saveICP = useCallback(async (icpConfig: ICPConfig) => {
     try {
@@ -117,7 +160,11 @@ export const useOnboarding = () => {
       setError(null);
       const response = await apiClient.saveICPConfig(icpConfig);
       if (response.success && response.data) {
-        setSession(response.data.session);
+        const payload = extractStatusPayload(response.data);
+        if (payload.session) {
+          setSession(payload.session);
+          syncFromSession(payload.session, payload.checklist);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to save ICP config'));
@@ -125,7 +172,7 @@ export const useOnboarding = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [syncFromSession]);
 
   const verifyDomain = useCallback(async (domain: string) => {
     try {
@@ -168,8 +215,35 @@ export const useOnboarding = () => {
       setError(null);
       const response = await apiClient.completeOnboarding();
       if (response.success && response.data) {
-        setSession(response.data.session);
-        return response.data.auto_config;
+        const payload = extractStatusPayload(response.data);
+
+        if (payload.session) {
+          setSession(payload.session);
+          syncFromSession(payload.session, payload.checklist);
+        } else if (typeof payload.completed === 'boolean') {
+          if (payload.completed) {
+            markCompleted({
+              completed: payload.completed,
+              pendingStep: payload.pendingStep,
+              checklist: payload.checklist,
+            });
+          } else {
+            setStatus({
+              completed: payload.completed,
+              pendingStep: payload.pendingStep,
+              checklist: payload.checklist,
+            });
+          }
+        }
+
+        if (payload.checklist) {
+          setChecklist(payload.checklist);
+        }
+
+        window.dispatchEvent(new CustomEvent('onboarding:completed'));
+
+        const autoConfig = (response.data as Record<string, unknown>).auto_config;
+        return autoConfig;
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to complete onboarding'));
@@ -177,7 +251,7 @@ export const useOnboarding = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [markCompleted, setChecklist, setStatus, syncFromSession]);
 
   return {
     session,

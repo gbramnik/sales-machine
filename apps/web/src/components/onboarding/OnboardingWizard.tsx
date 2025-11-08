@@ -7,7 +7,7 @@ import { Step3Domain } from './Step3Domain'
 import { Step4Calendar } from './Step4Calendar'
 import { Step5Review } from './Step5Review'
 import { useOnboarding } from '@/hooks/useOnboarding'
-import type { ICPConfig } from '@/hooks/useOnboarding'
+import type { ICPConfig } from '@sales-machine/shared'
 
 interface OnboardingData {
   goal: string | null
@@ -19,6 +19,7 @@ interface OnboardingData {
 
 interface OnboardingWizardProps {
   onComplete: () => void
+  initialStep?: number
 }
 
 // Map backend step to frontend step number
@@ -31,9 +32,12 @@ const stepMap: Record<string, number> = {
   complete: 6,
 }
 
-export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
+export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, initialStep }) => {
   const { session, isLoading, saveGoal, saveIndustry, saveICP, verifyDomain, connectCalendar, completeOnboarding, refetch } = useOnboarding()
-  const [currentStep, setCurrentStep] = useState(1)
+  const totalSteps = 5
+  const startingStep =
+    typeof initialStep === 'number' && initialStep >= 1 && initialStep <= totalSteps ? initialStep : 1
+  const [currentStep, setCurrentStep] = useState(startingStep)
   const [data, setData] = useState<OnboardingData>({
     goal: null,
     industry: null,
@@ -41,15 +45,17 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     calendar: null,
   })
 
-  const totalSteps = 5
-
   // Initialize from session
   useEffect(() => {
     if (session) {
       // Map backend current_step to frontend step
       const backendStep = session.current_step
       const frontendStep = stepMap[backendStep] || 1
-      setCurrentStep(Math.min(frontendStep, totalSteps))
+      const targetStep =
+        typeof initialStep === 'number'
+          ? Math.max(1, Math.min(initialStep, frontendStep, totalSteps))
+          : Math.min(frontendStep, totalSteps)
+      setCurrentStep(targetStep)
 
       // Load data from session
       setData({
@@ -60,7 +66,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
         icpConfig: session.icp_config || undefined,
       })
     }
-  }, [session])
+  }, [session, initialStep, totalSteps])
 
   // Handle OAuth callback
   useEffect(() => {

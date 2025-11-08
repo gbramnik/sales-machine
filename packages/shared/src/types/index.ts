@@ -154,4 +154,8 @@ export type {
   CalendarConnectionResult,
   AutoConfigResult,
   IndustryICPMapping,
+  OnboardingChecklistAction,
+  OnboardingChecklistItem,
+  OnboardingStatus,
+  OnboardingStep,
 } from './onboarding';

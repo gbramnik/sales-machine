@@ -3,11 +3,42 @@
  * Story 5.1: Onboarding Wizard (Backend)
  */
 
+export type OnboardingStep =
+  | 'goal_selection'
+  | 'industry'
+  | 'icp'
+  | 'domain'
+  | 'calendar'
+  | 'complete';
+
+export interface OnboardingChecklistAction {
+  label: string;
+  href?: string;
+  step?: OnboardingStep;
+  analyticsEvent?: string;
+}
+
+export interface OnboardingChecklistItem {
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  action?: OnboardingChecklistAction;
+  priority?: 'low' | 'medium' | 'high';
+}
+
+export interface OnboardingStatus {
+  completed: boolean;
+  pendingStep?: OnboardingStep;
+  checklist: OnboardingChecklistItem[];
+  updatedAt?: string;
+}
+
 export interface OnboardingSession {
   id: string;
   user_id: string;
   status: 'in_progress' | 'completed' | 'abandoned';
-  current_step: 'goal_selection' | 'industry' | 'icp' | 'domain' | 'calendar' | 'complete';
+  current_step: OnboardingStep;
   goal_meetings_per_month?: '5-10' | '10-20' | '20-30';
   industry?: string;
   icp_config?: ICPConfig;

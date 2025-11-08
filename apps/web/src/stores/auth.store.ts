@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { useOnboardingStore } from './onboarding.store';
 import { setSentryUser, clearSentryUser } from '@/lib/sentry';
 
 interface AuthState {
@@ -40,6 +41,8 @@ export const useAuthStore = create<AuthState>()(
           session: data.session,
           isLoading: false,
         });
+
+        useOnboardingStore.getState().setUserId(data.user?.id ?? null);
       },
 
       logout: async () => {
@@ -50,6 +53,7 @@ export const useAuthStore = create<AuthState>()(
           session: null,
           isLoading: false,
         });
+        useOnboardingStore.getState().reset();
       },
 
       checkSession: async () => {
@@ -74,6 +78,8 @@ export const useAuthStore = create<AuthState>()(
           user: session?.user ?? null,
           isLoading: false,
         });
+
+        useOnboardingStore.getState().setUserId(session?.user?.id ?? null);
       },
 
       setSession: (session: Session | null) => {
@@ -88,6 +94,8 @@ export const useAuthStore = create<AuthState>()(
           session,
           user: session?.user ?? null,
         });
+
+        useOnboardingStore.getState().setUserId(session?.user?.id ?? null);
       },
 
       setUser: (user: User | null) => {

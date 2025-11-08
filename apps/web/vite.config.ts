@@ -12,4 +12,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './tests/setupTests.ts',
+    globals: true,
+    clearMocks: true,
+    exclude: ['tests/e2e/**'],
+  },
 });
